@@ -1,0 +1,24 @@
+@{
+    ViewData["Title"] = "SQL";
+}
+<h1>@ViewData["Title"]</h1>
+
+<h4 class="mt-4">Connect to SQL database on behalf of user</h4>
+<form method="POST" asp-action="ConnectOnBehalfOfUser">
+    <button type="submit" class="btn btn-primary">Execute</button>
+</form>
+
+<h4 class="mt-4">Connect to SQL database as the application (client credentials)</h4>
+<form method="POST" asp-action="ConnectOnBehalfOfApp">
+    <button type="submit" class="btn btn-primary">Execute</button>
+</form>
+
+@if (ViewData["SqlCurrentUser"] != null)
+{
+    <h4 class="mt-4">Result</h4>
+    <div>Executed command, user as seen by the database: <code>@ViewData["SqlCurrentUser"]</code></div>
+}
+@if (ViewData["Exception"] != null)
+{
+    <pre>@ViewData["Exception"]</pre>
+}

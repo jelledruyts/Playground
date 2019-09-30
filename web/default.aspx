@@ -173,12 +173,12 @@
 
     protected void RenderOutboundHttpRequest()
     {
-        var requestUrl = Request.QueryString.GetValues("requestUrl") == null ? null : Request.QueryString.GetValues("requestUrl").FirstOrDefault();
-        var requestHostName = Request.QueryString.GetValues("requestHostName") == null ? null : Request.QueryString.GetValues("requestHostName").FirstOrDefault();
+        var requestUrl = Request["requestUrl"];
+        var requestHostName = Request["requestHostName"];
 
         Response.Write(Environment.NewLine);
         Response.Write(@"
-        <form method=""get"" action=""#outbound-http-request"">
+        <form method=""POST"" action=""#outbound-http-request"">
             <p class=""text-muted"">Allows you to perform an HTTP request from the web server and render the results below.</p>
             <div class=""form-group"">
                 <label for=""requestUrl"">URL</label>
@@ -197,7 +197,7 @@
         if (!string.IsNullOrWhiteSpace(requestUrl))
         {
             Response.Write(Environment.NewLine);
-            Response.Write("<h5>Result</h5>");
+            Response.Write("<h5>Result at " + DateTimeOffset.UtcNow.ToString("u") + " (UTC)</h5>");
             Response.Write(Environment.NewLine);
             Response.Write("<div class=\"card\"><div class=\"card-body\"><pre>");
             Response.Write(Environment.NewLine);
@@ -228,16 +228,16 @@
 
     protected void RenderOutboundSqlConnection()
     {
-        var sqlConnectionString = Request.QueryString.GetValues("sqlConnectionString") == null ? null : Request.QueryString.GetValues("sqlConnectionString").FirstOrDefault();
-        var sqlQuery = Request.QueryString.GetValues("sqlQuery") == null ? "SELECT @@VERSION" : Request.QueryString.GetValues("sqlQuery").FirstOrDefault();
+        var sqlConnectionString = Request["sqlConnectionString"];
+        var sqlQuery = Request["sqlQuery"] == null ? "SELECT CONNECTIONPROPERTY('client_net_address')" : Request["sqlQuery"];
 
         Response.Write(Environment.NewLine);
         Response.Write(@"
-        <form method=""get"" action=""#outbound-sql-connection"">
+        <form method=""POST"" action=""#outbound-sql-connection"">
             <p class=""text-muted"">Allows you to perform a (scalar) query on a SQL Connection from the web server and render the results below.</p>
             <div class=""form-group"">
                 <label for=""sqlConnectionString"">SQL Connection String</label>
-                <input type=""text"" name=""sqlConnectionString"" id=""sqlConnectionString"" value=""" + sqlConnectionString + @""" class=""form-control"" autocomplete=""off"" />
+                <input type=""password"" name=""sqlConnectionString"" id=""sqlConnectionString"" value=""" + sqlConnectionString + @""" class=""form-control"" autocomplete=""off"" />
             </div>
             <div class=""form-group"">
                 <label for=""sqlQuery"">Query</label>
@@ -252,7 +252,7 @@
         if (!string.IsNullOrWhiteSpace(sqlConnectionString))
         {
             Response.Write(Environment.NewLine);
-            Response.Write("<h5>Result</h5>");
+            Response.Write("<h5>Result at " + DateTimeOffset.UtcNow.ToString("u") + " (UTC)</h5>");
             Response.Write(Environment.NewLine);
             Response.Write("<div class=\"card\"><div class=\"card-body\"><pre>");
             Response.Write(Environment.NewLine);

@@ -1,9 +1,11 @@
 <%-- A web page that you can simply drop in any ASP.NET host (like IIS or Azure App Service) to get a lot of info on the web server where it's running --%>
 <%@ Page Language="C#" %>
-<%@ Import Namespace="System.IO" %>
 <%@ Import Namespace="System.Data.SqlClient" %>
+<%@ Import Namespace="System.Diagnostics" %>
+<%@ Import Namespace="System.IO" %>
 <%@ Import Namespace="System.Net" %>
 <%@ Import Namespace="System.Runtime" %>
+<%@ Import Namespace="System.Runtime.InteropServices" %>
 <%@ Import Namespace="System.Security.Claims" %>
 <!doctype html>
 <html lang="en">
@@ -155,6 +157,11 @@
         info.Add(new KeyValuePair<string, string>("Logged On User Domain", Environment.UserDomainName));
         info.Add(new KeyValuePair<string, string>("Logged On User Name", Environment.UserName));
         info.Add(new KeyValuePair<string, string>("Garbage Collection Mode", GCSettings.IsServerGC ? "Server" : "Workstation"));
+        info.Add(new KeyValuePair<string, string>("System Time", Format(DateTimeOffset.UtcNow)));
+        info.Add(new KeyValuePair<string, string>("System Uptime", GetSystemUptime().ToString()));
+        info.Add(new KeyValuePair<string, string>("System Start Time", Format(DateTime.UtcNow - GetSystemUptime())));
+        info.Add(new KeyValuePair<string, string>("Process Uptime", GetProcessUptime().ToString()));
+        info.Add(new KeyValuePair<string, string>("Process Start Time", Format(DateTime.UtcNow - GetProcessUptime())));
         return info;
     }
 
@@ -196,11 +203,7 @@
 
         if (!string.IsNullOrWhiteSpace(requestUrl))
         {
-            Response.Write(Environment.NewLine);
-            Response.Write("<h5>Result at " + DateTimeOffset.UtcNow.ToString("u") + " (UTC)</h5>");
-            Response.Write(Environment.NewLine);
-            Response.Write("<div class=\"card\"><div class=\"card-body\"><pre>");
-            Response.Write(Environment.NewLine);
+            var result = string.Empty;
             try
             {
                 var request = (HttpWebRequest)WebRequest.Create(requestUrl);
@@ -213,13 +216,19 @@
                 using (var reader = new StreamReader(dataStream))
                 {
                     var responseFromServer = reader.ReadToEnd();
-                    Response.Write(HttpUtility.HtmlEncode(responseFromServer));
+                    result = HttpUtility.HtmlEncode(responseFromServer);
                 }
             }
             catch (Exception exc)
             {
-                Response.Write(HttpUtility.HtmlEncode(exc.ToString()));
+                result = HttpUtility.HtmlEncode(exc.ToString());
             }
+            Response.Write(Environment.NewLine);
+            Response.Write("<h5>Result at " + Format(DateTimeOffset.UtcNow) + "</h5>");
+            Response.Write(Environment.NewLine);
+            Response.Write("<div class=\"card\"><div class=\"card-body\"><pre>");
+            Response.Write(Environment.NewLine);
+            Response.Write(result);
             Response.Write(Environment.NewLine);
             Response.Write("</pre></div></div>");
             Response.Write(Environment.NewLine);
@@ -251,11 +260,7 @@
 
         if (!string.IsNullOrWhiteSpace(sqlConnectionString))
         {
-            Response.Write(Environment.NewLine);
-            Response.Write("<h5>Result at " + DateTimeOffset.UtcNow.ToString("u") + " (UTC)</h5>");
-            Response.Write(Environment.NewLine);
-            Response.Write("<div class=\"card\"><div class=\"card-body\"><pre>");
-            Response.Write(Environment.NewLine);
+            var result = string.Empty;
             try
             {
                 using (var connection = new SqlConnection(sqlConnectionString))
@@ -263,17 +268,46 @@
                 {
                     connection.Open();
                     command.CommandText = sqlQuery;
-                    var result = command.ExecuteScalar();
-                    Response.Write(HttpUtility.HtmlEncode(result));
+                    result = HttpUtility.HtmlEncode(command.ExecuteScalar());
                 }
             }
             catch (Exception exc)
             {
-                Response.Write(HttpUtility.HtmlEncode(exc.ToString()));
+                result = HttpUtility.HtmlEncode(exc.ToString());
             }
+            Response.Write(Environment.NewLine);
+            Response.Write("<h5>Result at " + Format(DateTimeOffset.UtcNow) + "</h5>");
+            Response.Write(Environment.NewLine);
+            Response.Write("<div class=\"card\"><div class=\"card-body\"><pre>");
+            Response.Write(Environment.NewLine);
+            Response.Write(result);
             Response.Write(Environment.NewLine);
             Response.Write("</pre></div></div>");
             Response.Write(Environment.NewLine);
         }
     }
+    
+    [DllImport("kernel32")]
+    extern static UInt64 GetTickCount64();
+
+    public static TimeSpan GetSystemUptime()
+    {
+        return TimeSpan.FromMilliseconds(GetTickCount64());
+    }
+    
+    public static TimeSpan GetProcessUptime()
+    {
+        return (DateTime.Now - Process.GetCurrentProcess().StartTime);
+    }
+
+    public static string Format(DateTime value)
+    {
+        return value.ToString("u") + " (UTC)";
+    }
+
+    public static string Format(DateTimeOffset value)
+    {
+        return value.ToString("u") + " (UTC)";
+    }
+
 </script>

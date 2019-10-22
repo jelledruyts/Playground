@@ -27,6 +27,7 @@
             <li class="list-inline-item">&raquo; <a href="#system">System</a></li>
             <li class="list-inline-item">&raquo; <a href="#server-variables">Server Variables</a></li>
             <li class="list-inline-item">&raquo; <a href="#environment-variables">Environment Variables</a></li>
+            <li class="list-inline-item">&raquo; <a href="#dns-lookup">DNS Lookup</a></li>
             <li class="list-inline-item">&raquo; <a href="#outbound-http-request">Outbound HTTP Request</a></li>
             <li class="list-inline-item">&raquo; <a href="#outbound-sql-connection">Outbound SQL Connection</a></li>
         </ol>
@@ -55,6 +56,9 @@
 
         <% RenderHeader("Environment Variables", "environment-variables"); %>
         <% RenderTable(Environment.GetEnvironmentVariables().Keys.Cast<string>().OrderBy(k => k).Select(k => new KeyValuePair<string, string>(k, Environment.GetEnvironmentVariable(k)))); %>
+
+        <% RenderHeader("DNS Lookup", "dns-lookup"); %>
+        <% RenderDnsLookup(); %>
 
         <% RenderHeader("Outbound HTTP Request", "outbound-http-request"); %>
         <% RenderOutboundHttpRequest(); %>
@@ -178,6 +182,47 @@
         return info;
     }
 
+    protected void RenderDnsLookup()
+    {
+        var dnsLookup = Request["dnsLookup"];
+
+        Response.Write(Environment.NewLine);
+        Response.Write(@"
+        <form method=""POST"" action=""#dns-lookup"">
+            <p class=""text-muted"">Allows you to perform a DNS lookup from the web server and render the results below.</p>
+            <div class=""form-group"">
+                <label for=""dnsLookup"">Host name (or IP address)</label>
+                <input type=""text"" name=""dnsLookup"" id=""dnsLookup"" value=""" + dnsLookup + @""" class=""form-control"" />
+            </div>
+            <div class=""form-group"">
+                <input type=""submit"" value=""Submit"" class=""btn btn-primary"" />
+            </div>
+        </form>
+");
+
+        if (!string.IsNullOrWhiteSpace(dnsLookup))
+        {
+            var result = string.Empty;
+            try
+            {
+                var host = Dns.GetHostEntry(dnsLookup);
+                var resultBuilder = new StringBuilder();
+                resultBuilder.AppendFormat("Host name: \"{0}\"", host.HostName).AppendLine();
+                resultBuilder.AppendFormat("IP Addresses: " + string.Join(", ", (object[])host.AddressList)).AppendLine();
+                if (host.Aliases != null && host.Aliases.Length > 0)
+                {
+                    resultBuilder.AppendFormat("Aliases: " + string.Join(", ", host.Aliases)).AppendLine();
+                }
+                result = resultBuilder.ToString().TrimEnd();
+            }
+            catch (Exception exc)
+            {
+                result = HttpUtility.HtmlEncode(exc.ToString());
+            }
+            RenderResultCard(result);
+        }
+    }
+    
     protected void RenderOutboundHttpRequest()
     {
         var requestUrl = Request["requestUrl"];
@@ -223,15 +268,7 @@
             {
                 result = HttpUtility.HtmlEncode(exc.ToString());
             }
-            Response.Write(Environment.NewLine);
-            Response.Write("<h5>Result at " + Format(DateTimeOffset.UtcNow) + "</h5>");
-            Response.Write(Environment.NewLine);
-            Response.Write("<div class=\"card\"><div class=\"card-body\"><pre>");
-            Response.Write(Environment.NewLine);
-            Response.Write(result);
-            Response.Write(Environment.NewLine);
-            Response.Write("</pre></div></div>");
-            Response.Write(Environment.NewLine);
+            RenderResultCard(result);
         }
     }
 
@@ -275,7 +312,13 @@
             {
                 result = HttpUtility.HtmlEncode(exc.ToString());
             }
-            Response.Write(Environment.NewLine);
+            RenderResultCard(result);
+        }
+    }
+    
+    protected void RenderResultCard(string result)
+    {
+        Response.Write(Environment.NewLine);
             Response.Write("<h5>Result at " + Format(DateTimeOffset.UtcNow) + "</h5>");
             Response.Write(Environment.NewLine);
             Response.Write("<div class=\"card\"><div class=\"card-body\"><pre>");
@@ -284,9 +327,8 @@
             Response.Write(Environment.NewLine);
             Response.Write("</pre></div></div>");
             Response.Write(Environment.NewLine);
-        }
     }
-    
+
     [DllImport("kernel32")]
     extern static UInt64 GetTickCount64();
 

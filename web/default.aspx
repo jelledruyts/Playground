@@ -30,6 +30,7 @@
             <li class="list-inline-item">&raquo; <a href="#dns-lookup">DNS Lookup</a></li>
             <li class="list-inline-item">&raquo; <a href="#outbound-http-request">Outbound HTTP Request</a></li>
             <li class="list-inline-item">&raquo; <a href="#outbound-sql-connection">Outbound SQL Connection</a></li>
+            <li class="list-inline-item">&raquo; <a href="#azure-managed-identity">Azure Managed Identity</a></li>
         </ol>
 
         <% RenderHeader("Request", "request"); %>
@@ -65,6 +66,9 @@
 
         <% RenderHeader("Outbound SQL Connection", "outbound-sql-connection"); %>
         <% RenderOutboundSqlConnection(); %>
+
+        <% RenderHeader("Azure Managed Identity", "azure-managed-identity"); %>
+        <% RenderAzureManagedIdentity(); %>
     </div>
 </body>
 </html>
@@ -316,6 +320,66 @@
         }
     }
     
+    protected void RenderAzureManagedIdentity()
+    {
+        var resource = Request["resource"] == null ? "https://management.azure.com/" : Request["resource"];
+
+        Response.Write(Environment.NewLine);
+        Response.Write(@"
+        <form method=""POST"" action=""#azure-managed-identity"">
+            <p class=""text-muted"">Allows you to request an access token for the <a href=""https://docs.microsoft.com/en-us/azure/active-directory/managed-identities-azure-resources/overview"" target=""_blank"">managed identity representing your application when running on a supported Azure service</a>.</p>
+            <div class=""form-group"">
+                <label for=""resource"">Resource</label>
+                <input type=""text"" name=""resource"" id=""resource"" value=""" + resource + @""" class=""form-control"" />
+            </div>
+            <div class=""form-group"">
+                <input type=""submit"" value=""Submit"" class=""btn btn-primary"" />
+            </div>
+        </form>
+");
+
+        if (string.Equals(Request.HttpMethod, "POST", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(resource))
+        {
+            var result = string.Empty;
+            try
+            {
+                var requestUrl = default(string);
+                var headerName = default(string);
+                var headerValue = default(string);
+                var msiEndpoint = Environment.GetEnvironmentVariable("MSI_ENDPOINT");
+                var msiSecret = Environment.GetEnvironmentVariable("MSI_SECRET");
+                if (!string.IsNullOrWhiteSpace(msiEndpoint) && !string.IsNullOrWhiteSpace(msiSecret))
+                {
+                    // Running on App Service, use the corresponding endpoint and header.
+                    requestUrl = msiEndpoint + "?api-version=2017-09-01&resource=" + HttpUtility.UrlEncode(resource);
+                    headerName = "Secret";
+                    headerValue = msiSecret;
+                }
+                else
+                {
+                    // See https://docs.microsoft.com/en-us/azure/active-directory/managed-identities-azure-resources/how-to-use-vm-token#get-a-token-using-c
+                    requestUrl = "http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=" + HttpUtility.UrlEncode(resource);
+                    headerName = "Metadata";
+                    headerValue = "true";
+                }
+                var request = (HttpWebRequest)WebRequest.Create(requestUrl);
+                request.Headers.Add(headerName, headerValue);
+                using (var response = (HttpWebResponse)request.GetResponse())
+                using (var dataStream = response.GetResponseStream())
+                using (var reader = new StreamReader(dataStream))
+                {
+                    var responseFromServer = reader.ReadToEnd();
+                    result = HttpUtility.HtmlEncode(responseFromServer);
+                }
+            }
+            catch (Exception exc)
+            {
+                result = HttpUtility.HtmlEncode(exc.ToString());
+            }
+            RenderResultCard(result);
+        }
+    }
+	
     protected void RenderResultCard(string result)
     {
         Response.Write(Environment.NewLine);

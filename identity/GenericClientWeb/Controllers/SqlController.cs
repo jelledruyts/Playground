@@ -42,6 +42,8 @@ namespace GenericClientWeb.Controllers
             // - Set up an Azure AD admin for the Azure SQL Database
             // - Using that Azure AD admin account, create a contained database user for the other users accessing the database, e.g.:
             //     CREATE USER [myuser@mydomain.onmicrosoft.com] FROM EXTERNAL PROVIDER;
+            // - Verify with:
+            //     SELECT * FROM sys.database_principals;
             // - Configure the connection string in the app configuration as "Sql:ConnectionString"
             //     NOTE that the connection string should NOT contain any user information because the user will be set
             //     via the access token, e.g. the connection string could be simply:

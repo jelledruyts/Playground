@@ -199,12 +199,13 @@
                 <input type=""text"" name=""dnsLookup"" id=""dnsLookup"" value=""" + dnsLookup + @""" class=""form-control"" />
             </div>
             <div class=""form-group"">
+                <input type=""hidden"" name=""requestType"" value=""DnsLookup"" />
                 <input type=""submit"" value=""Submit"" class=""btn btn-primary"" />
             </div>
         </form>
 ");
 
-        if (!string.IsNullOrWhiteSpace(dnsLookup))
+        if (string.Equals(Request.HttpMethod, "POST", StringComparison.OrdinalIgnoreCase) && string.Equals(Request["requestType"], "DnsLookup", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(dnsLookup))
         {
             var result = string.Empty;
             try
@@ -245,12 +246,13 @@
                 <input type=""text"" name=""requestHostName"" id=""requestHostName"" value=""" + requestHostName + @""" class=""form-control"" />
             </div>
             <div class=""form-group"">
+                <input type=""hidden"" name=""requestType"" value=""OutboundHttpRequest"" />
                 <input type=""submit"" value=""Submit"" class=""btn btn-primary"" />
             </div>
         </form>
 ");
 
-        if (!string.IsNullOrWhiteSpace(requestUrl))
+        if (string.Equals(Request.HttpMethod, "POST", StringComparison.OrdinalIgnoreCase) && string.Equals(Request["requestType"], "OutboundHttpRequest", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(requestUrl))
         {
             var result = string.Empty;
             try
@@ -294,12 +296,13 @@
                 <input type=""text"" name=""sqlQuery"" id=""sqlQuery"" value=""" + sqlQuery + @""" class=""form-control"" />
             </div>
             <div class=""form-group"">
+                <input type=""hidden"" name=""requestType"" value=""OutboundSqlConnection"" />
                 <input type=""submit"" value=""Submit"" class=""btn btn-primary"" />
             </div>
         </form>
 ");
 
-        if (!string.IsNullOrWhiteSpace(sqlConnectionString))
+        if (string.Equals(Request.HttpMethod, "POST", StringComparison.OrdinalIgnoreCase) && string.Equals(Request["requestType"], "OutboundSqlConnection", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(sqlConnectionString))
         {
             var result = string.Empty;
             try
@@ -333,12 +336,13 @@
                 <input type=""text"" name=""resource"" id=""resource"" value=""" + resource + @""" class=""form-control"" />
             </div>
             <div class=""form-group"">
+                <input type=""hidden"" name=""requestType"" value=""AzureManagedIdentity"" />
                 <input type=""submit"" value=""Submit"" class=""btn btn-primary"" />
             </div>
         </form>
 ");
 
-        if (string.Equals(Request.HttpMethod, "POST", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(resource))
+        if (string.Equals(Request.HttpMethod, "POST", StringComparison.OrdinalIgnoreCase) && string.Equals(Request["requestType"], "AzureManagedIdentity", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(resource))
         {
             var result = string.Empty;
             try

@@ -1,0 +1,41 @@
+# Main variables
+REGION=westeurope
+RGNAME=aksplayground
+
+# Derived variables
+VNETNAME=$RGNAME-vnet
+AKSSUBNETNAME=$VNETNAME-subnet-aks
+AKSNAME=$RGNAME-aks
+ACRNAME=$RGNAME"acr"
+
+# Initial install and configuration inside Ubuntu/WSL
+if false; then
+    curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash # Install Azure CLI
+    az aks install-cli --install-location ~/.azure-kubectl/kubectl # Download Kubectl to user writable location
+    printf "\nexport PATH=\"$PATH:~/.azure-kubectl\"\n" >> ~/.bashrc # Add to search path
+    printf "\nalias k=kubectl\n" >> ~/.bashrc
+fi
+
+# Log in to Azure and show which subscription is selected
+if false; then
+    az login
+    az account show
+fi
+
+# Create the resource group and network
+az group create --name $RGNAME --location $REGION
+az network vnet create -g $RGNAME -n $VNETNAME --address-prefix 10.0.0.0/8 --subnet-name $AKSSUBNETNAME --subnet-prefix 10.0.0.0/16
+AKSSUBNETID=$(az network vnet subnet list -g $RGNAME --vnet-name $VNETNAME --query [].id -o tsv)
+
+# Create the AKS cluster
+az aks create -g $RGNAME -n $AKSNAME --network-plugin azure --enable-addons monitoring --node-count 2 --vnet-subnet-id $AKSSUBNETID --docker-bridge-address 172.17.0.1/16 --dns-service-ip 10.2.0.10 --service-cidr 10.2.0.0/24 --generate-ssh-keys
+# If the above step fails try manually creating a Service Principal: https://docs.microsoft.com/en-us/azure/aks/kubernetes-service-principal#manually-create-a-service-principal
+az aks get-credentials --resource-group $RGNAME --name $AKSNAME
+
+# Create the container registry
+#az acr create --resource-group $RGNAME --name $ACRNAME --sku Standard --location $REGION
+
+k apply -f "ig-front-end.yaml"
+k apply -f "ig-api-gateway.yaml"
+k apply -f "ig-api-1.yaml"
+k apply -f "ig-api-2.yaml"

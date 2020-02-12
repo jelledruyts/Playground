@@ -1,0 +1,45 @@
+# Enable AAD Pod Identity
+# NOTE: Make sure to select the right manifest depending on whether or not K8S RBAC is enabled
+#kubectl apply -f https://raw.githubusercontent.com/Azure/aad-pod-identity/master/deploy/infra/deployment.yaml
+kubectl apply -f https://raw.githubusercontent.com/Azure/aad-pod-identity/master/deploy/infra/deployment-rbac.yaml
+
+# Create the pod identity in Azure AD
+AKSPODIDENTITYNAME=$AKSNAME-podidentity-inspectorgadget
+PODIDENTITY=($(az identity create -g $RGNAME -n $AKSPODIDENTITYNAME --query "[clientId,id,name]" -o tsv))
+PODIDENTITYCLIENTID=${PODIDENTITY[0]}
+PODIDENTITYRESOURCEID=${PODIDENTITY[1]}
+PODIDENTITYNAME=${PODIDENTITY[2]}
+
+# Set permissions for Managed Identity Controller
+AKSSPCLIENTID=$(az aks show -g $RGNAME -n $AKSNAME --query "servicePrincipalProfile.clientId" -o tsv)
+az role assignment create --role "Managed Identity Operator" --assignee $AKSSPCLIENTID --scope $PODIDENTITYRESOURCEID
+
+# Create the pod identity in AKS
+cat << EOF | kubectl apply -f - 
+apiVersion: "aadpodidentity.k8s.io/v1"
+kind: AzureIdentity
+metadata:
+  name: $PODIDENTITYNAME
+spec:
+  type: 0 # 0 for User-Assigned MSI or 1 for Service Principal
+  ResourceID: $PODIDENTITYRESOURCEID
+  ClientID: $PODIDENTITYCLIENTID
+EOF
+
+# Install the identity binding
+PODIDENTITYSELECTOR=inspectorgadget-identity
+cat << EOF | kubectl apply -f -
+apiVersion: "aadpodidentity.k8s.io/v1"
+kind: AzureIdentityBinding
+metadata:
+  name: $PODIDENTITYNAME-binding
+spec:
+  AzureIdentity: $PODIDENTITYNAME
+  Selector: $PODIDENTITYSELECTOR
+EOF
+
+# Bind the front-end tier pods to the identity
+kubectl label --overwrite pods -l app=inspectorgadget,tier=front-end aadpodidbinding=$PODIDENTITYSELECTOR
+
+# To undo the label binding the pods to the pod identity:
+#kubectl label --overwrite pods -l app=inspectorgadget,tier=front-end aadpodidbinding-

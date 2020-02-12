@@ -1,0 +1,13 @@
+# Initial local install and configuration inside Ubuntu/WSL
+curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash # Install Azure CLI
+az aks install-cli --install-location ~/.azure-kubectl/kubectl # Download Kubectl to user writable location
+cat << EOF >> ~/.bashrc
+# Add kubectl to search path
+export PATH="$PATH:~/.azure-kubectl
+# Add an alias for kubectl
+alias k=kubectl
+EOF
+
+# Log in to Azure and show which subscription is selected
+az login
+az account show

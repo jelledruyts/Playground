@@ -1,0 +1,9 @@
+# Main variables
+REGION=westeurope
+RGNAME=aksplayground
+
+# Derived variables
+VNETNAME=$RGNAME-vnet
+AKSSUBNETNAME=$VNETNAME-subnet-aks
+AKSNAME=$RGNAME-aks
+ACRNAME=$RGNAME"acr"

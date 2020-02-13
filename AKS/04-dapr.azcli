@@ -1,0 +1,11 @@
+# Install Dapr CLI
+wget -q https://raw.githubusercontent.com/dapr/cli/master/install/install.sh -O - | /bin/bash
+dapr init --kubernetes
+
+# Deploy Redis state store for Dapr
+helm install redis stable/redis
+
+# Follow https://github.com/dapr/samples/tree/master/2.hello-kubernetes
+
+# Uninstall
+#dapr uninstall --kubernetes

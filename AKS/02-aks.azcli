@@ -12,9 +12,12 @@ az aks create -g $RGNAME -n $AKSNAME --network-plugin azure --enable-addons moni
 az aks get-credentials --resource-group $RGNAME --name $AKSNAME
 
 # Create the container registry
-#az acr create --resource-group $RGNAME --name $ACRNAME --sku Standard --location $REGION
+az acr create --resource-group $RGNAME --name $ACRNAME --sku Standard --location $REGION
 
-# Deploy the application containers
+# Give AKS pull permissions to the container registry
+az aks update -n $AKSNAME -g $RGNAME --attach-acr $ACRNAME
+
+# Deploy the Inspector Gadget application containers
 kubectl apply -f "ig-front-end.yaml"
 kubectl apply -f "ig-api-gateway.yaml"
 kubectl apply -f "ig-api-1.yaml"

@@ -1,0 +1,35 @@
+# Following https://github.com/kedacore/sample-hello-world-azure-functions
+
+# Install KEDA (see https://keda.sh/deploy/)
+helm repo add kedacore https://kedacore.github.io/charts
+helm repo update
+kubectl create namespace keda
+helm install keda kedacore/keda --namespace keda
+
+# Set up a local function app
+mkdir hello-keda
+cd hello-keda
+func init . --docker # Select node and javascript
+func new # Select Azure Queue Storage Trigger
+
+# Create a Storage Account and Queue
+STORAGEACCOUNTNAME=$RGNAME"kedaqueue"
+STORAGEQUEUENAME=keda-queue
+az storage account create --sku Standard_LRS --location $REGION -g $RGNAME -n $STORAGEACCOUNTNAME
+STORAGEACCOUNTCONNECTIONSTRING=$(az storage account show-connection-string --name $STORAGEACCOUNTNAME --query connectionString)
+az storage queue create -n $STORAGEQUEUENAME --connection-string $STORAGEACCOUNTCONNECTIONSTRING
+
+# Build the Function app container in ACR (no local Docker install required) and tag it "latest"
+az acr build -g $RGNAME -r $ACRNAME -t "hello-keda:latest" .
+
+# Generate a Kubernetes deployment spec via --dry-run (as you can't seem to deploy the existing container image
+# directly, or even specify the tag which is why we're building and tagging as "latest" above)
+func kubernetes deploy --name hello-keda --registry $ACRNAME".azurecr.io" --javascript --dry-run > hello-keda.yaml
+
+# Deploy the Function app container and the related Keda resources that are part of the deployment spec
+kubectl apply -f hello-keda.yaml
+
+# Uninstall KEDA
+#helm uninstall -n keda keda
+#kubectl delete -f https://raw.githubusercontent.com/kedacore/keda/master/deploy/crds/keda.k8s.io_scaledobjects_crd.yaml
+#kubectl delete -f https://raw.githubusercontent.com/kedacore/keda/master/deploy/crds/keda.k8s.io_triggerauthentications_crd.yaml

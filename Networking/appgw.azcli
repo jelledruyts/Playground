@@ -1,0 +1,63 @@
+# Main variables
+REGION=westeurope
+RGNAME=networking
+APPSVCTARGET=networking-app-web.azurewebsites.net
+
+# Derived variables
+VNETNAME=$RGNAME-vnet
+APPGWSUBNETNAME=$VNETNAME-subnet-appgw-v2
+APPGWNAME=$RGNAME-appgateway
+APPGWPUBLICIPNAME=$APPGWNAME-ip-public
+APPGWPUBLICIPCONFIGNAME=appGatewayFrontendIP
+APPGWPUBLICPORTNAME=$APPGWNAME-frontend-port
+APPSVCBACKENDPOOLNAME=$APPGWNAME-backend-appsvc
+APPSVCHTTPSETTINGSNAME=$APPGWNAME-httpsettings-appsvc
+APPSVCLISTENERNAME=$APPGWNAME-listener-appsvc
+APPSVCRULENAME=$APPGWNAME-rule-appsvc
+
+# Create public IP
+az network public-ip create --resource-group $RGNAME --name $APPGWPUBLICIPNAME --allocation-method Static --sku Standard
+
+# Create Application Gateway
+az network application-gateway create --resource-group $RGNAME --name $APPGWNAME --location $REGION \
+    --capacity 1 --sku Standard_v2 \
+    --vnet-name $VNETNAME --subnet $APPGWSUBNETNAME \
+    --public-ip-address $APPGWPUBLICIPNAME \
+    --frontend-port 8080 # Use a dummy frontend port to make it easier to reconfigure properly
+
+# Create a proper frontend port
+az network application-gateway frontend-port create --resource-group $RGNAME --name $APPGWPUBLICPORTNAME --gateway-name $APPGWNAME \
+   --port 80
+
+# Create an HTTP listener
+az network application-gateway http-listener create --resource-group $RGNAME --name $APPSVCLISTENERNAME --gateway-name $APPGWNAME \
+    --frontend-ip $APPGWPUBLICIPCONFIGNAME --frontend-port $APPGWPUBLICPORTNAME
+
+# Create a backend pool pointing at an App Service web app
+az network application-gateway address-pool create --resource-group $RGNAME --name $APPSVCBACKENDPOOLNAME --gateway-name $APPGWNAME \
+    --servers $APPSVCTARGET
+
+# Create HTTP settings for the web app
+az network application-gateway http-settings create --resource-group $RGNAME --name $APPSVCHTTPSETTINGSNAME --gateway-name $APPGWNAME \
+    --gateway-name $APPGWNAME \
+    --port 80 --protocol Http \
+    --host-name $APPSVCTARGET \
+    --cookie-based-affinity Disabled \
+    --connection-draining-timeout 60 # The time in seconds after a backend server is removed during which on open connection remains active. Range: 0 (disabled) to 3600.
+
+# Create a rule to expose the web app over the HTTP listener
+az network application-gateway rule create --resource-group $RGNAME --name $APPSVCRULENAME --gateway-name $APPGWNAME \
+    --rule-type Basic \
+    --address-pool $APPSVCBACKENDPOOLNAME \
+    --http-listener $APPSVCLISTENERNAME \
+    --http-settings $APPSVCHTTPSETTINGSNAME
+
+# Delete the auto-generated configuration on (dummy) port 8080
+az network application-gateway rule delete --resource-group $RGNAME --name rule1 --gateway-name $APPGWNAME
+az network application-gateway http-settings delete --resource-group $RGNAME --name appGatewayBackendHttpSettings --gateway-name $APPGWNAME
+az network application-gateway http-listener delete --resource-group $RGNAME --name appGatewayHttpListener --gateway-name $APPGWNAME
+az network application-gateway address-pool delete --resource-group $RGNAME --name appGatewayBackendPool --gateway-name $APPGWNAME
+
+# Optionally stop/start the Application Gateway
+az network application-gateway stop --name $APPGWNAME --resource-group $RGNAME
+az network application-gateway start --name $APPGWNAME --resource-group $RGNAME

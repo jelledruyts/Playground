@@ -1,0 +1,67 @@
+# Main variables
+REGION=westeurope
+RGNAME=jdcognitivesearch
+
+# Derived variables
+STORAGEACCOUNTNAME=$RGNAME"storage"
+STORAGEACCOUNTCONTAINERNAME=samplefiles
+APPINSIGHTSNAME=$RGNAME"appinsights"
+COGNITIVESERVICESNAME=$RGNAME"cognitiveservices"
+COGNITIVESEARCHNAME=$RGNAME"cognitivesearch"
+DATASOURCENAME=$STORAGEACCOUNTCONTAINERNAME-datasource
+SKILLSETNAME=$STORAGEACCOUNTCONTAINERNAME-skillset
+INDEXNAME=$STORAGEACCOUNTCONTAINERNAME-index
+INDEXERNAME=$STORAGEACCOUNTCONTAINERNAME-indexer
+
+# Create Resource Group and supporting services
+az group create -l $REGION -n $RGNAME
+az storage account create -l $REGION -g $RGNAME -n $STORAGEACCOUNTNAME --kind StorageV2 --sku Standard_LRS
+STORAGEACCOUNTCONNECTIONSTRING=$(az storage account show-connection-string -g $RGNAME -n $STORAGEACCOUNTNAME --query connectionString --output tsv)
+az storage container create --connection-string $STORAGEACCOUNTCONNECTIONSTRING --name $STORAGEACCOUNTCONTAINERNAME --public-access off
+az cognitiveservices account create -l $REGION -g $RGNAME -n $COGNITIVESERVICESNAME --kind CognitiveServices --sku S0 --yes
+COGNITIVESERVICESKEY=$(az cognitiveservices account keys list -g $RGNAME -n $COGNITIVESERVICESNAME --query key1 --output tsv)
+
+# Upload sample data to blob storage container and apply custom metadata tags "DocumentType" and "BusinessImpact" as used in the search index
+az storage blob upload-batch --connection-string $STORAGEACCOUNTCONNECTIONSTRING -d $STORAGEACCOUNTCONTAINERNAME -s "./samplefiles"
+BUSINESSIMPACTS=("High" "Medium" "Low")
+for DOCUMENTTYPEDIR in ./samplefiles/*; do
+    for FILENAME in $DOCUMENTTYPEDIR/*; do
+        RELATIVEFILENAME=${FILENAME:14}
+        DOCUMENTTYPE=${DOCUMENTTYPEDIR:14}
+        BUSINESSIMPACT=${BUSINESSIMPACTS[$RANDOM % ${#BUSINESSIMPACTS[@]}]}
+        az storage blob metadata update --connection-string $STORAGEACCOUNTCONNECTIONSTRING --container-name $STORAGEACCOUNTCONTAINERNAME --name "$RELATIVEFILENAME" --metadata "DocumentType=$DOCUMENTTYPE" "BusinessImpact=$BUSINESSIMPACT"
+    done
+done
+
+# Create Azure Cognitive Search
+az search service create -l $REGION -g $RGNAME -n $COGNITIVESEARCHNAME \
+    --sku Basic --partition-count 1 --replica-count 1
+COGNITIVESEARCHADMINKEY=$(az search admin-key show -g $RGNAME --service-name $COGNITIVESEARCHNAME --query primaryKey --output tsv)
+
+# Create data source for blob storage container
+cat "azuresearch-storage-datasource.json" | \
+    awk '{sub(/__datasourceName__/,"'$DATASOURCENAME'")}1' | awk '{sub(/__connectionString__/,"'$STORAGEACCOUNTCONNECTIONSTRING'")}1' | awk '{sub(/__containerName__/,"'$STORAGEACCOUNTCONTAINERNAME'")}1' | \
+    curl -X PUT "https://$COGNITIVESEARCHNAME.search.windows.net/datasources/$DATASOURCENAME?api-version=2019-05-06" \
+    -H "Content-Type: application/json" -H "api-key: $COGNITIVESEARCHADMINKEY" \
+    -d @-
+
+# Create skillset for blob storage indexer
+cat "azuresearch-storage-skillset.json" | \
+    awk '{sub(/__skillsetName__/,"'$SKILLSETNAME'")}1' | awk '{sub(/__cognitiveServicesName__/,"'$COGNITIVESERVICESNAME'")}1' | awk '{sub(/__cognitiveServicesKey__/,"'$COGNITIVESERVICESKEY'")}1' | \
+    curl -X PUT "https://$COGNITIVESEARCHNAME.search.windows.net/skillsets/$SKILLSETNAME?api-version=2019-05-06" \
+    -H "Content-Type: application/json" -H "api-key: $COGNITIVESEARCHADMINKEY" \
+    -d @-
+
+# Create index for blob storage files
+cat "azuresearch-storage-index.json" | \
+    awk '{sub(/__indexName__/,"'$INDEXNAME'")}1' | \
+    curl -X PUT "https://$COGNITIVESEARCHNAME.search.windows.net/indexes/$INDEXNAME?api-version=2019-05-06" \
+    -H "Content-Type: application/json" -H "api-key: $COGNITIVESEARCHADMINKEY" \
+    -d @-
+
+# Create indexer for blob storage container
+cat "azuresearch-storage-indexer.json" | \
+    awk '{sub(/__indexerName__/,"'$INDEXERNAME'")}1' | awk '{sub(/__datasourceName__/,"'$DATASOURCENAME'")}1' | awk '{sub(/__skillsetName__/,"'$SKILLSETNAME'")}1' | awk '{sub(/__indexName__/,"'$INDEXNAME'")}1' | \
+    curl -X PUT "https://$COGNITIVESEARCHNAME.search.windows.net/indexers/$INDEXERNAME?api-version=2019-05-06" \
+    -H "Content-Type: application/json" -H "api-key: $COGNITIVESEARCHADMINKEY" \
+    -d @-

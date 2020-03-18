@@ -1,0 +1,81 @@
+{
+    "name": "__skillsetName__",
+    "description": null,
+    "skills": [
+        {
+            "@odata.type": "#Microsoft.Skills.Text.EntityRecognitionSkill",
+            "name": "#1",
+            "description": null,
+            "context": "/document/content",
+            "categories": [
+                "Person",
+                "Quantity",
+                "Organization",
+                "URL",
+                "Email",
+                "Location",
+                "DateTime"
+            ],
+            "defaultLanguageCode": "en",
+            "minimumPrecision": null,
+            "includeTypelessEntities": null,
+            "inputs": [
+                {
+                    "name": "text",
+                    "source": "/document/content",
+                    "sourceContext": null,
+                    "inputs": []
+                },
+                {
+                    "name": "languageCode",
+                    "source": "/document/cog_language",
+                    "sourceContext": null,
+                    "inputs": []
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "persons",
+                    "targetName": "cog_people"
+                },
+                {
+                    "name": "organizations",
+                    "targetName": "cog_organizations"
+                },
+                {
+                    "name": "locations",
+                    "targetName": "cog_locations"
+                },
+                {
+                    "name": "entities",
+                    "targetName": "entities"
+                }
+            ]
+        },
+        {
+            "@odata.type": "#Microsoft.Skills.Text.LanguageDetectionSkill",
+            "name": "#2",
+            "description": null,
+            "context": "/document",
+            "inputs": [
+                {
+                    "name": "text",
+                    "source": "/document/content",
+                    "sourceContext": null,
+                    "inputs": []
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "languageCode",
+                    "targetName": "cog_language"
+                }
+            ]
+        }
+    ],
+    "cognitiveServices": {
+        "@odata.type": "#Microsoft.Azure.Search.CognitiveServicesByKey",
+        "description": "__cognitiveServicesName__",
+        "key": "__cognitiveServicesKey__"
+    }
+}

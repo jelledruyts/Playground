@@ -1,0 +1,53 @@
+{
+    "name": "__indexerName__",
+    "description": "",
+    "dataSourceName": "__datasourceName__",
+    "skillsetName": "__skillsetName__",
+    "targetIndexName": "__indexName__",
+    "disabled": null,
+    "schedule": null,
+    "parameters": {
+        "batchSize": null,
+        "maxFailedItems": 0,
+        "maxFailedItemsPerBatch": 0,
+        "base64EncodeKeys": null,
+        "configuration": {
+            "dataToExtract": "contentAndMetadata",
+            "parsingMode": "default",
+            "firstLineContainsHeaders": false,
+            "delimitedTextDelimiter": ","
+        }
+    },
+    "fieldMappings": [
+        {
+            "sourceFieldName": "metadata_storage_path",
+            "targetFieldName": "metadata_storage_path",
+            "mappingFunction": {
+                "name": "base64Encode",
+                "parameters": null
+            }
+        }
+    ],
+    "outputFieldMappings": [
+        {
+            "sourceFieldName": "/document/content/cog_people",
+            "targetFieldName": "cog_people",
+            "mappingFunction": null
+        },
+        {
+            "sourceFieldName": "/document/content/cog_organizations",
+            "targetFieldName": "cog_organizations",
+            "mappingFunction": null
+        },
+        {
+            "sourceFieldName": "/document/content/cog_locations",
+            "targetFieldName": "cog_locations",
+            "mappingFunction": null
+        },
+        {
+            "sourceFieldName": "/document/cog_language",
+            "targetFieldName": "cog_language",
+            "mappingFunction": null
+        }
+    ]
+}

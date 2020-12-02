@@ -1,0 +1,70 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "location": {
+            "type": "string",
+            "defaultValue": "[resourceGroup().location]",
+            "metadata": {
+                "description": "Deployment location"
+            }
+        },
+        "uniquePrefix": {
+            "type": "string",
+            "defaultValue": "[uniqueString(subscription().id, resourceGroup().id)]",
+            "metadata": {
+                "description": "Unique resource name prefix"
+            }
+        },
+        "remoteSuffix": {
+            "type": "string",
+            "defaultValue": "[uniqueString(subscription().id, resourceGroup().id)]",
+            "metadata": {
+                "description": "Suffix describing the logical group of resources being deployed"
+            }
+        },
+        "subnetResourceId": {
+            "type": "string",
+            "metadata": {
+                "description": "Resource ID of the subnet to deploy the private endpoint into"
+            }
+        },
+        "sqlResourceId": {
+            "type": "string",
+            "metadata": {
+                "description": "Resource ID of the SQL Server to create the private endpoint for"
+            }
+        }
+    },
+    "variables": {
+        "sqlPrivateEndpointName": "[concat(parameters('uniquePrefix'), '-sql-endpoint', parameters('remoteSuffix'))]"
+    },
+    "resources": [
+        {
+            "apiVersion": "2019-04-01",
+            "type": "Microsoft.Network/privateEndpoints",
+            "name": "[variables('sqlPrivateEndpointName')]",
+            "location": "[parameters('location')]",
+            "properties": {
+                "subnet": {
+                    "id": "[parameters('subnetResourceId')]"
+                },
+                "privateLinkServiceConnections": [
+                    {
+                        "name": "[variables('sqlPrivateEndpointName')]",
+                        "properties": {
+                            "privateLinkServiceId": "[parameters('sqlResourceId')]",
+                            "groupIds": [ "sqlServer" ]
+                        }
+                    }
+                ]
+            }
+        }
+    ],
+    "outputs": {
+        "privateEndpointNicResourceId": {
+            "type": "string",
+            "value": "[reference(variables('sqlPrivateEndpointName')).networkInterfaces[0].id]"
+        }
+    }
+}

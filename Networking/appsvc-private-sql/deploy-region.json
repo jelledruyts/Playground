@@ -1,0 +1,277 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "location": {
+            "type": "string",
+            "defaultValue": "[resourceGroup().location]",
+            "metadata": {
+                "description": "Deployment location"
+            }
+        },
+        "uniquePrefix": {
+            "type": "string",
+            "defaultValue": "[uniqueString(subscription().id, resourceGroup().id)]",
+            "metadata": {
+                "description": "Unique resource name prefix"
+            }
+        },
+        "resourceSuffix": {
+            "type": "string",
+            "defaultValue": "",
+            "metadata": {
+                "description": "Suffix describing the logical group of resources currently being deployed"
+            }
+        },
+        "vnetId": {
+            "type": "int",
+            "defaultValue": 1,
+            "metadata": {
+                "description": "Unique ID of the VNet to deploy"
+            }
+        },
+        "sqlAdministratorLoginName": {
+            "type": "string",
+            "metadata": {
+                "description": "Azure SQL DB administrator login name"
+            }
+        },
+        "sqlAdministratorLoginPassword": {
+            "type": "securestring",
+            "metadata": {
+                "description": "Azure SQL DB administrator password"
+            }
+        },
+        "skipSqlDatabase": {
+            "type": "bool",
+            "defaultValue": false,
+            "metadata": {
+                "description": "Skips creation of a SQL Database within the SQL Server"
+            }
+        }
+    },
+    "variables": {
+        "sqlServerName": "[concat(parameters('uniquePrefix'), '-sql-server', parameters('resourceSuffix'))]",
+        "sqlDatabaseName": "[concat(parameters('uniquePrefix'), '-sql-database')]",
+        "vnetName": "[concat(parameters('uniquePrefix'), '-vnet', parameters('resourceSuffix'))]",
+        "sqlSubnetName": "[concat(variables('vnetName'), '-subnet-sql')]",
+        "appSubnetName": "[concat(variables('vnetName'), '-subnet-app')]",
+        "sqlPrivateEndpointName": "[concat(parameters('uniquePrefix'), '-sql-endpoint', parameters('resourceSuffix'))]",
+        "sqlPrivateDnsZoneName": "[concat('privatelink', environment().suffixes.sqlServerHostname)]",
+        "webAppPlanName": "[concat(parameters('uniquePrefix'), '-web-plan', parameters('resourceSuffix'))]",
+        "webAppName": "[concat(parameters('uniquePrefix'), '-web-app', parameters('resourceSuffix'))]"
+    },
+    "resources": [
+        {
+            "apiVersion": "2020-08-01-preview",
+            "type": "Microsoft.Sql/servers",
+            "name": "[variables('sqlServerName')]",
+            "location": "[parameters('location')]",
+            "properties": {
+                "administratorLogin": "[parameters('sqlAdministratorLoginName')]",
+                "administratorLoginPassword": "[parameters('sqlAdministratorLoginPassword')]",
+                "version": "12.0",
+                "publicNetworkAccess": "Disabled"
+            }
+        },
+        {
+            "condition": "[not(parameters('skipSqlDatabase'))]",
+            "apiVersion": "2020-08-01-preview",
+            "type": "Microsoft.Sql/servers/databases",
+            "name": "[concat(variables('sqlServerName'), '/', variables('sqlDatabaseName'))]",
+            "location": "[parameters('location')]",
+            "dependsOn": [
+                "[variables('sqlServerName')]"
+            ],
+            "sku": {
+                "name": "GP_S_Gen5",
+                "capacity": 1
+            },
+            "kind": "v12.0,user,vcore,serverless",
+            "properties": {
+                "autoPauseDelay": 60
+            }
+        },
+        {
+            "apiVersion": "2020-05-01",
+            "type": "Microsoft.Network/virtualNetworks",
+            "name": "[variables('vnetName')]",
+            "location": "[parameters('location')]",
+            "properties": {
+                "addressSpace": {
+                    "addressPrefixes": [
+                        "[concat('10.', parameters('vnetId'), '.0.0/16')]"
+                    ]
+                },
+                "subnets": [
+                    {
+                        "name": "[variables('sqlSubnetName')]",
+                        "properties": {
+                            "addressPrefix": "[concat('10.', parameters('vnetId'), '.1.0/24')]",
+                            "privateEndpointNetworkPolicies": "Disabled"
+                        }
+                    },
+                    {
+                        "name": "[variables('appSubnetName')]",
+                        "properties": {
+                            "addressPrefix": "[concat('10.', parameters('vnetId'), '.2.0/24')]",
+                            "delegations": [
+                                {
+                                    "name": "delegation",
+                                    "properties": {
+                                        "serviceName": "Microsoft.Web/serverfarms"
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "apiVersion": "2019-04-01",
+            "type": "Microsoft.Network/privateEndpoints",
+            "name": "[variables('sqlPrivateEndpointName')]",
+            "location": "[parameters('location')]",
+            "dependsOn": [
+                "[variables('vnetName')]",
+                "[variables('sqlServerName')]"
+            ],
+            "properties": {
+                "subnet": {
+                    "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), variables('sqlSubnetName'))]"
+                },
+                "privateLinkServiceConnections": [
+                    {
+                        "name": "[variables('sqlPrivateEndpointName')]",
+                        "properties": {
+                            "privateLinkServiceId": "[resourceId('Microsoft.Sql/servers', variables('sqlServerName'))]",
+                            "groupIds": [ "sqlServer" ]
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "apiVersion": "2020-01-01",
+            "type": "Microsoft.Network/privateDnsZones",
+            "name": "[variables('sqlPrivateDnsZoneName')]",
+            "location": "global"
+        },
+        {
+            "apiVersion": "2020-01-01",
+            "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+            "name": "[concat(variables('sqlPrivateDnsZoneName'), '/', variables('sqlPrivateDnsZoneName'), '-', variables('vnetName'), '-link')]",
+            "location": "global",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/privateDnsZones', variables('sqlPrivateDnsZoneName'))]",
+                "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]"
+            ],
+            "properties": {
+                "registrationEnabled": false,
+                "virtualNetwork": {
+                    "id": "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]"
+                }
+            }
+        },
+        {
+            "apiVersion": "2020-03-01",
+            "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
+            "name": "[concat(variables('sqlPrivateEndpointName'), '/dnsgroup')]",
+            "location": "[parameters('location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/privateDnsZones', variables('sqlPrivateDnsZoneName'))]",
+                "[variables('sqlPrivateEndpointName')]"
+            ],
+            "properties": {
+                "privateDnsZoneConfigs": [
+                    {
+                        "name": "config",
+                        "properties": {
+                            "privateDnsZoneId": "[resourceId('Microsoft.Network/privateDnsZones', variables('sqlPrivateDnsZoneName'))]"
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "apiVersion": "2019-08-01",
+            "type": "Microsoft.Web/serverfarms",
+            "name": "[variables('webAppPlanName')]",
+            "location": "[parameters('location')]",
+            "kind": "linux",
+            "sku": {
+                "name": "P1v3",
+                "capacity": 1
+            },
+            "properties": {
+                "reserved": true,
+                "name": "[variables('webAppPlanName')]"
+            }
+        },
+        {
+            "apiVersion": "2019-08-01",
+            "type": "Microsoft.Web/sites",
+            "name": "[variables('webAppName')]",
+            "location": "[parameters('location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Web/serverfarms', variables('webAppPlanName'))]"
+            ],
+            "properties": {
+                "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('webAppPlanName'))]",
+                "siteConfig": {
+                    "linuxFxVersion": "DOCKER|jelledruyts/inspectorgadget"
+                }
+            },
+            "resources": [
+                {
+                    "apiVersion": "2019-08-01",
+                    "type": "config",
+                    "name": "appsettings",
+                    "dependsOn": [
+                        "[resourceId('Microsoft.Web/Sites/', variables('webAppName'))]"
+                    ],
+                    "properties": {
+                        "WEBSITES_ENABLE_APP_SERVICE_STORAGE": "false",
+                        "WEBSITE_VNET_ROUTE_ALL": "1",
+                        "WEBSITE_DNS_SERVER": "168.63.129.16",
+                        "DefaultDnsLookupHost": "[reference(variables('sqlServerName')).fullyQualifiedDomainName]",
+                        "DefaultSqlConnectionSqlConnectionString": "[concat('Server=tcp:',reference(variables('sqlServerName')).fullyQualifiedDomainName,',1433;Initial Catalog=master;Persist Security Info=False;User ID=', parameters('sqlAdministratorLoginName'),';Password=', parameters('sqlAdministratorLoginPassword'), ';MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;')]",
+                        "DefaultSqlConnectionSqlQuery": "SELECT CAST(CONNECTIONPROPERTY('client_net_address') AS NVARCHAR) + ' => ' + CAST(@@SERVERNAME AS NVARCHAR)"
+                    }
+                },
+                {
+                    "apiVersion": "2019-08-01",
+                    "type": "networkConfig",
+                    "name": "virtualNetwork",
+                    "location": "[parameters('location')]",
+                    "dependsOn": [
+                        "[resourceId('Microsoft.Web/sites', variables('webAppName'))]"
+                    ],
+                    "properties": {
+                        "subnetResourceId": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), variables('appSubnetName'))]",
+                        "swiftSupported": true
+                    }
+                }
+            ]
+        }
+    ],
+    "outputs": {
+        "sqlSubnetResourceId": {
+            "type": "string",
+            "value": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), variables('sqlSubnetName'))]"
+        },
+        "sqlResourceId": {
+            "type": "string",
+            "value": "[resourceId('Microsoft.Sql/servers', variables('sqlServerName'))]"
+        },
+        "sqlServerName": {
+            "type": "string",
+            "value": "[variables('sqlServerName')]"
+        },
+        "sqlDatabaseName": {
+            "type": "string",
+            "value": "[variables('sqlDatabaseName')]"
+        }
+    }
+}

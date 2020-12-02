@@ -65,3 +65,8 @@ cat "azuresearch-storage-indexer.json" | \
     curl -X PUT "https://$COGNITIVESEARCHNAME.search.windows.net/indexers/$INDEXERNAME?api-version=2019-05-06" \
     -H "Content-Type: application/json" -H "api-key: $COGNITIVESEARCHADMINKEY" \
     -d @-
+
+# Search examples:
+# - diversity
+# - diversity&$select=metadata_storage_name,metadata_storage_content_type,metadata_storage_size,metadata_creation_date,metadata_storage_last_modified,DocumentType,BusinessImpact
+# - $select=metadata_storage_name&$filter=DocumentType eq 'Reports' and BusinessImpact eq 'High'

@@ -1,0 +1,33 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "hostName": {
+            "type": "string",
+            "metadata": {
+                "description": "Host name for the DNS record to point at the Private Endpoint NIC's IP address"
+            }
+        },
+        "privateEndpointNicResourceId": {
+            "type": "string",
+            "metadata": {
+                "description": "Resource ID of the Private Endpoint NIC"
+            }
+        }
+    },
+    "variables": {
+        "sqlPrivateDnsZoneName": "[concat('privatelink', environment().suffixes.sqlServerHostname)]"
+    },
+    "resources": [
+        {
+            "apiVersion": "2020-01-01",
+            "type": "Microsoft.Network/privateDnsZones/A",
+            "name": "[concat(variables('sqlPrivateDnsZoneName'), '/', parameters('hostName'))]",
+            "location": "global",
+            "properties": {
+                "aRecords": "[concat(json(concat('[{\"ipv4Address\":\"', reference(parameters('privateEndpointNicResourceId'), '2019-11-01').ipConfigurations[0].properties.privateIPAddress, '\"}]')))]",
+                "ttl": 10
+            }
+        }
+    ]
+}

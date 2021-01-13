@@ -1,0 +1,8 @@
+{
+    "name": "privatesearch-search2blob-endpoint",
+    "properties": {
+      "privateLinkResourceId": "/subscriptions/xxx/resourceGroups/xxx/providers/Microsoft.Storage/storageAccounts/xxx",
+      "groupId": "blob",
+      "requestMessage": "Please approve"
+    }
+}

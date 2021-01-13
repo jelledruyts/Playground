@@ -1,0 +1,5 @@
+# Set up the private link resource between Azure Cognitive Search and the data source
+# https://docs.microsoft.com/en-us/azure/search/search-indexer-howto-access-private
+az login
+az account set --subscription xxx
+az rest --method put --uri https://management.azure.com/subscriptions/xxx/resourceGroups/xxx/providers/Microsoft.Search/searchServices/xxx/sharedPrivateLinkResources/privatesearch-search2blob-endpoint?api-version=2020-08-01 --body @privatesearch-search2blob-endpoint.json --debug

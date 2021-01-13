@@ -1,0 +1,23 @@
+{
+    "name": "content-indexer",
+    "description": "",
+    "dataSourceName": "content-datasource",
+    "targetIndexName": "content-index",
+    "disabled": null,
+    "schedule": null,
+    "parameters": {
+        "configuration": {
+            "executionEnvironment": "private"
+        }
+    },
+    "fieldMappings": [
+        {
+            "sourceFieldName": "metadata_storage_path",
+            "targetFieldName": "metadata_storage_path",
+            "mappingFunction": {
+                "name": "base64Encode",
+                "parameters": null
+            }
+        }
+    ]
+}

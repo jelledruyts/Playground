@@ -1,1 +1,0 @@
-<%-- This file has moved to https://github.com/jelledruyts/InspectorGadget/blob/master/Page/default.aspx --%>

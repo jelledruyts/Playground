@@ -210,16 +210,19 @@
             }
         },
         {
-            "apiVersion": "2019-08-01",
+            "apiVersion": "2021-01-01",
             "type": "Microsoft.Web/sites",
             "name": "[variables('webAppName')]",
             "location": "[parameters('location')]",
             "dependsOn": [
-                "[resourceId('Microsoft.Web/serverfarms', variables('webAppPlanName'))]"
+                "[resourceId('Microsoft.Web/serverfarms', variables('webAppPlanName'))]",
+                "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]"
             ],
             "properties": {
                 "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('webAppPlanName'))]",
+                "virtualNetworkSubnetId": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), variables('appSubnetName'))]",
                 "siteConfig": {
+                    "vnetRouteAllEnabled": true,
                     "linuxFxVersion": "DOCKER|jelledruyts/inspectorgadget"
                 }
             },
@@ -233,24 +236,8 @@
                     ],
                     "properties": {
                         "WEBSITES_ENABLE_APP_SERVICE_STORAGE": "false",
-                        "WEBSITE_VNET_ROUTE_ALL": "1",
-                        "WEBSITE_DNS_SERVER": "168.63.129.16",
                         "DefaultDnsLookupHost": "[reference(variables('sqlServerName')).fullyQualifiedDomainName]",
-                        "DefaultSqlConnectionSqlConnectionString": "[concat('Server=tcp:',reference(variables('sqlServerName')).fullyQualifiedDomainName,',1433;Initial Catalog=master;Persist Security Info=False;User ID=', parameters('sqlAdministratorLoginName'),';Password=', parameters('sqlAdministratorLoginPassword'), ';MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;')]",
-                        "DefaultSqlConnectionSqlQuery": "SELECT CAST(CONNECTIONPROPERTY('client_net_address') AS NVARCHAR) + ' => ' + CAST(@@SERVERNAME AS NVARCHAR)"
-                    }
-                },
-                {
-                    "apiVersion": "2019-08-01",
-                    "type": "networkConfig",
-                    "name": "virtualNetwork",
-                    "location": "[parameters('location')]",
-                    "dependsOn": [
-                        "[resourceId('Microsoft.Web/sites', variables('webAppName'))]"
-                    ],
-                    "properties": {
-                        "subnetResourceId": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), variables('appSubnetName'))]",
-                        "swiftSupported": true
+                        "DefaultSqlConnectionSqlConnectionString": "[concat('Server=tcp:',reference(variables('sqlServerName')).fullyQualifiedDomainName,',1433;Initial Catalog=master;Persist Security Info=False;User ID=', parameters('sqlAdministratorLoginName'),';Password=', parameters('sqlAdministratorLoginPassword'), ';MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;')]"
                     }
                 }
             ]

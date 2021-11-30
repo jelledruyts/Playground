@@ -1,0 +1,62 @@
+# Main variables
+LOCATION="North Central US (Stage)"
+RESOURCE_GROUP=containerapps
+
+# Derived variables
+LOG_ANALYTICS_WORKSPACE=$RESOURCE_GROUP-logs
+CONTAINERAPPS_ENVIRONMENT=$RESOURCE_GROUP-environment
+CONTAINERAPP_APPNAME_FRONTEND=$RESOURCE_GROUP-app-front
+CONTAINERAPP_APPNAME_BACKEND=$RESOURCE_GROUP-app-back
+
+# Setup
+az extension add --source https://workerappscliextension.blob.core.windows.net/azure-cli-extension/containerapp-0.2.0-py2.py3-none-any.whl
+az provider register --namespace Microsoft.Web
+az group create --name "$RESOURCE_GROUP" --location "$LOCATION"
+
+# Deploy Log Analytics
+az monitor log-analytics workspace create --resource-group $RESOURCE_GROUP --workspace-name $LOG_ANALYTICS_WORKSPACE
+# ...Wait a bit here...
+LOG_ANALYTICS_WORKSPACE_CLIENT_ID=`az monitor log-analytics workspace show --query customerId -g $RESOURCE_GROUP -n $LOG_ANALYTICS_WORKSPACE --out tsv`
+LOG_ANALYTICS_WORKSPACE_CLIENT_SECRET=`az monitor log-analytics workspace get-shared-keys --query primarySharedKey -g $RESOURCE_GROUP -n $LOG_ANALYTICS_WORKSPACE --out tsv`
+echo $LOG_ANALYTICS_WORKSPACE_CLIENT_ID
+echo $LOG_ANALYTICS_WORKSPACE_CLIENT_SECRET
+
+# Deploy the Container App Environment
+az containerapp env create \
+  --name $CONTAINERAPPS_ENVIRONMENT \
+  --resource-group $RESOURCE_GROUP \
+  --logs-workspace-id $LOG_ANALYTICS_WORKSPACE_CLIENT_ID \
+  --logs-workspace-key $LOG_ANALYTICS_WORKSPACE_CLIENT_SECRET \
+  --location "$LOCATION"
+
+# Deploy the front-end Container App
+FRONTEND_URL=`az containerapp create \
+  --name $CONTAINERAPP_APPNAME_FRONTEND \
+  --resource-group $RESOURCE_GROUP \
+  --environment $CONTAINERAPPS_ENVIRONMENT \
+  --image jelledruyts/inspectorgadget \
+  --target-port 80 \
+  --ingress 'external' \
+  --environment-variables 'InfoMessage=This is the Front-End app,DefaultHttpRequestUrl=http://localhost:3500/v1.0/invoke/backend/method/api/introspector/environment/InfoMessage' \
+  --enable-dapr true \
+  --dapr-app-id frontend \
+  --dapr-app-port 80 \
+  --query configuration.ingress.fqdn -o tsv`
+
+# Deploy the front-end Container App
+BACKEND_URL=`az containerapp create \
+  --name $CONTAINERAPP_APPNAME_BACKEND \
+  --resource-group $RESOURCE_GROUP \
+  --environment $CONTAINERAPPS_ENVIRONMENT \
+  --image jelledruyts/inspectorgadget \
+  --target-port 80 \
+  --ingress 'external' \
+  --environment-variables 'InfoMessage=This is the Back-End app' \
+  --enable-dapr true \
+  --dapr-app-id backend \
+  --dapr-app-port 80 \
+  --query configuration.ingress.fqdn -o tsv`
+
+# Perform an HTTP request from the front-end towards the back-end but through the
+# localhost Dapr sidecar container and using the logical "backend" dapr app id.
+curl -d '{"requestUrl":"http://localhost:3500/v1.0/invoke/backend/method/api/introspector/environment/InfoMessage"}' -H "Content-Type: application/json" -X POST https://$FRONTEND_URL/api/httprequest

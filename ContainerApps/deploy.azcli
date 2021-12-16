@@ -1,5 +1,6 @@
 # Main variables
-LOCATION="North Central US (Stage)"
+#LOCATION="West Europe"
+LOCATION="canadacentral"
 RESOURCE_GROUP=containerapps
 
 # Derived variables
@@ -15,11 +16,8 @@ az group create --name "$RESOURCE_GROUP" --location "$LOCATION"
 
 # Deploy Log Analytics
 az monitor log-analytics workspace create --resource-group $RESOURCE_GROUP --workspace-name $LOG_ANALYTICS_WORKSPACE
-# ...Wait a bit here...
 LOG_ANALYTICS_WORKSPACE_CLIENT_ID=`az monitor log-analytics workspace show --query customerId -g $RESOURCE_GROUP -n $LOG_ANALYTICS_WORKSPACE --out tsv`
 LOG_ANALYTICS_WORKSPACE_CLIENT_SECRET=`az monitor log-analytics workspace get-shared-keys --query primarySharedKey -g $RESOURCE_GROUP -n $LOG_ANALYTICS_WORKSPACE --out tsv`
-echo $LOG_ANALYTICS_WORKSPACE_CLIENT_ID
-echo $LOG_ANALYTICS_WORKSPACE_CLIENT_SECRET
 
 # Deploy the Container App Environment
 az containerapp env create \
@@ -30,7 +28,7 @@ az containerapp env create \
   --location "$LOCATION"
 
 # Deploy the front-end Container App
-FRONTEND_URL=`az containerapp create \
+FRONTEND_FQDN=`az containerapp create \
   --name $CONTAINERAPP_APPNAME_FRONTEND \
   --resource-group $RESOURCE_GROUP \
   --environment $CONTAINERAPPS_ENVIRONMENT \
@@ -44,7 +42,7 @@ FRONTEND_URL=`az containerapp create \
   --query configuration.ingress.fqdn -o tsv`
 
 # Deploy the front-end Container App
-BACKEND_URL=`az containerapp create \
+BACKEND_FQDN=`az containerapp create \
   --name $CONTAINERAPP_APPNAME_BACKEND \
   --resource-group $RESOURCE_GROUP \
   --environment $CONTAINERAPPS_ENVIRONMENT \
@@ -57,6 +55,9 @@ BACKEND_URL=`az containerapp create \
   --dapr-app-port 80 \
   --query configuration.ingress.fqdn -o tsv`
 
+echo "Frontend: https://$FRONTEND_FQDN"
+echo "Backend: https://$BACKEND_FQDN"
+
 # Perform an HTTP request from the front-end towards the back-end but through the
 # localhost Dapr sidecar container and using the logical "backend" dapr app id.
-curl -d '{"requestUrl":"http://localhost:3500/v1.0/invoke/backend/method/api/introspector/environment/InfoMessage"}' -H "Content-Type: application/json" -X POST https://$FRONTEND_URL/api/httprequest
+curl -w '\n' -d '{"requestUrl":"http://localhost:3500/v1.0/invoke/backend/method/api/introspector/environment/InfoMessage"}' -H "Content-Type: application/json" -X POST https://$FRONTEND_FQDN/api/httprequest

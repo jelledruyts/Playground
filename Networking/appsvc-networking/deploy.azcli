@@ -22,14 +22,6 @@ az deployment group create \
   --template-file ./main.bicep \
   --parameters name=$RESOURCE_GROUP aadUsername=$AAD_USERNAME aadSid=$AAD_SID
 
-# Allow the local IP address to pass through the SQL firewall.
-SQLSERVER_NAME=$(az deployment group show \
-  --resource-group $RESOURCE_GROUP \
-  --name $RESOURCE_GROUP \
-  --query properties.outputs.sqlserverNameprincipalId.value --output tsv)
-LOCAL_IP="`wget -qO- http://ipinfo.io/ip`"
-az sql server firewall-rule create --resource-group $RESOURCE_GROUP -s $SQLSERVER_NAME -n AllowLocalIP --start-ip-address $LOCAL_IP --end-ip-address $LOCAL_IP
-
 # Retrieve the name of the App Service managed identity.
 APPSVC_IDENTITY=$(az deployment group show \
   --resource-group $RESOURCE_GROUP \
@@ -44,6 +36,19 @@ ALTER ROLE db_datawriter ADD MEMBER $APPSVC_IDENTITY;
 ALTER ROLE db_ddladmin ADD MEMBER $APPSVC_IDENTITY;
 GO;
 EOT
+
+# Optional: allow the local IP address to pass through the SQL firewall.
+SQLSERVER_NAME=$(az deployment group show \
+  --resource-group $RESOURCE_GROUP \
+  --name $RESOURCE_GROUP \
+  --query properties.outputs.sqlserverNameprincipalId.value --output tsv)
+LOCAL_IP="`wget -qO- http://ipinfo.io/ip`"
+az sql server firewall-rule create \
+  --resource-group $RESOURCE_GROUP \
+  --server $SQLSERVER_NAME \
+  --name AllowLocalIP \
+  --start-ip-address $LOCAL_IP \
+  --end-ip-address $LOCAL_IP
 
 # MANUAL ACTION:
 # Use sqlcmd or the SQL query editor in the Azure portal to execute the above SQL file on the database.

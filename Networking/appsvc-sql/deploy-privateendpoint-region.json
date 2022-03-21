@@ -237,13 +237,22 @@
                     "properties": {
                         "WEBSITES_ENABLE_APP_SERVICE_STORAGE": "false",
                         "DefaultDnsLookupHost": "[reference(variables('sqlServerName')).fullyQualifiedDomainName]",
-                        "DefaultSqlConnectionSqlConnectionString": "[concat('Server=tcp:',reference(variables('sqlServerName')).fullyQualifiedDomainName,',1433;Initial Catalog=master;Persist Security Info=False;User ID=', parameters('sqlAdministratorLoginName'),';Password=', parameters('sqlAdministratorLoginPassword'), ';MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;')]"
+                        "DefaultSqlConnectionSqlConnectionString": "[concat('User ID=', parameters('sqlAdministratorLoginName'),';Password=', parameters('sqlAdministratorLoginPassword'), ';')]",
+                        "DefaultSqlConnectionSqlConnectionStringSuffix": "[concat('Server=tcp:',reference(variables('sqlServerName')).fullyQualifiedDomainName,',1433;Initial Catalog=master;Persist Security Info=False;MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;')]"
                     }
                 }
             ]
         }
     ],
     "outputs": {
+        "vnetName": {
+            "type": "string",
+            "value": "[variables('vnetName')]"
+        },
+        "vnetResourceId": {
+            "type": "string",
+            "value": "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]"
+        },
         "sqlSubnetResourceId": {
             "type": "string",
             "value": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), variables('sqlSubnetName'))]"

@@ -1,23 +1,31 @@
 # Main variables
 #LOCATION="West Europe"
-LOCATION="canadacentral"
+LOCATION="eastus2"
 RESOURCE_GROUP=containerapps
 
 # Derived variables
 LOG_ANALYTICS_WORKSPACE=$RESOURCE_GROUP-logs
+STORAGE_ACCOUNT=${RESOURCE_GROUP}stg
 CONTAINERAPPS_ENVIRONMENT=$RESOURCE_GROUP-environment
 CONTAINERAPP_APPNAME_FRONTEND=$RESOURCE_GROUP-app-front
 CONTAINERAPP_APPNAME_BACKEND=$RESOURCE_GROUP-app-back
 
 # Setup
-az extension add --source https://workerappscliextension.blob.core.windows.net/azure-cli-extension/containerapp-0.2.0-py2.py3-none-any.whl
-az provider register --namespace Microsoft.Web
 az group create --name "$RESOURCE_GROUP" --location "$LOCATION"
 
 # Deploy Log Analytics
 az monitor log-analytics workspace create --resource-group $RESOURCE_GROUP --workspace-name $LOG_ANALYTICS_WORKSPACE
 LOG_ANALYTICS_WORKSPACE_CLIENT_ID=`az monitor log-analytics workspace show --query customerId -g $RESOURCE_GROUP -n $LOG_ANALYTICS_WORKSPACE --out tsv`
 LOG_ANALYTICS_WORKSPACE_CLIENT_SECRET=`az monitor log-analytics workspace get-shared-keys --query primarySharedKey -g $RESOURCE_GROUP -n $LOG_ANALYTICS_WORKSPACE --out tsv`
+
+# Deploy Storage (for Dapr state)
+az storage account create \
+  --name $STORAGE_ACCOUNT \
+  --resource-group $RESOURCE_GROUP \
+  --location "$LOCATION" \
+  --sku Standard_RAGRS \
+  --kind StorageV2
+STORAGE_ACCOUNT_KEY=`az storage account keys list --resource-group $RESOURCE_GROUP --account-name $STORAGE_ACCOUNT --query '[0].value' --out tsv`
 
 # Deploy the Container App Environment
 az containerapp env create \
@@ -27,6 +35,12 @@ az containerapp env create \
   --logs-workspace-key $LOG_ANALYTICS_WORKSPACE_CLIENT_SECRET \
   --location "$LOCATION"
 
+# Enable Dapr state
+az containerapp env dapr-component set \
+    --name $CONTAINERAPPS_ENVIRONMENT --resource-group $RESOURCE_GROUP \
+    --dapr-component-name statestore \
+    --yaml dapr-statestore.yaml
+
 # Deploy the front-end Container App
 FRONTEND_FQDN=`az containerapp create \
   --name $CONTAINERAPP_APPNAME_FRONTEND \
@@ -34,12 +48,12 @@ FRONTEND_FQDN=`az containerapp create \
   --environment $CONTAINERAPPS_ENVIRONMENT \
   --image jelledruyts/inspectorgadget \
   --target-port 80 \
-  --ingress 'external' \
-  --environment-variables 'InfoMessage=This is the Front-End app,DefaultHttpRequestUrl=http://localhost:3500/v1.0/invoke/backend/method/api/introspector/environment/InfoMessage' \
+  --ingress "external" \
+  --env-vars InfoMessage="This is the Front-End app" DefaultHttpRequestUrl="http://localhost:3500/v1.0/invoke/backend/method/api/introspector/environment/InfoMessage" \
   --enable-dapr true \
   --dapr-app-id frontend \
   --dapr-app-port 80 \
-  --query configuration.ingress.fqdn -o tsv`
+  --query properties.configuration.ingress.fqdn --output tsv`
 
 # Deploy the front-end Container App
 BACKEND_FQDN=`az containerapp create \
@@ -48,12 +62,12 @@ BACKEND_FQDN=`az containerapp create \
   --environment $CONTAINERAPPS_ENVIRONMENT \
   --image jelledruyts/inspectorgadget \
   --target-port 80 \
-  --ingress 'external' \
-  --environment-variables 'InfoMessage=This is the Back-End app' \
+  --ingress "external" \
+  --env-vars InfoMessage="This is the Back-End app" \
   --enable-dapr true \
   --dapr-app-id backend \
   --dapr-app-port 80 \
-  --query configuration.ingress.fqdn -o tsv`
+  --query properties.configuration.ingress.fqdn --output tsv`
 
 echo "Frontend: https://$FRONTEND_FQDN"
 echo "Backend: https://$BACKEND_FQDN"

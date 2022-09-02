@@ -222,7 +222,7 @@
                 "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('webAppPlanName'))]",
                 "virtualNetworkSubnetId": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), variables('appSubnetName'))]",
                 "siteConfig": {
-                    "vnetRouteAllEnabled": true,
+                    "vnetRouteAllEnabled": false,
                     "linuxFxVersion": "DOCKER|jelledruyts/inspectorgadget"
                 }
             },

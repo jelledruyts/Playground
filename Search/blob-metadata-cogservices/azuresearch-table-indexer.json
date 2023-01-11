@@ -1,0 +1,26 @@
+{
+    "name": "__indexerName__",
+    "description": "",
+    "dataSourceName": "__datasourceName__",
+    "targetIndexName": "__indexName__",
+    "disabled": null,
+    "schedule": null,
+    "parameters": {
+        "batchSize": null,
+        "maxFailedItems": 0,
+        "maxFailedItemsPerBatch": 0,
+        "base64EncodeKeys": null,
+        "configuration": {}
+    },
+    "fieldMappings": [
+        {
+            "sourceFieldName": "metadata_storage_path",
+            "targetFieldName": "metadata_storage_path",
+            "mappingFunction": {
+                "name": "base64Encode",
+                "parameters": null
+            }
+        }
+    ],
+    "outputFieldMappings": []
+}

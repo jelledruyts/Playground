@@ -1,0 +1,15 @@
+{
+    "name": "__datasourceName__",
+    "description": null,
+    "type": "azuretable",
+    "subtype": null,
+    "credentials": {
+        "connectionString": "__connectionString__"
+    },
+    "container": {
+        "name": "__tableName__",
+        "query": "PartitionKey eq '__partitionKey__'"
+    },
+    "dataChangeDetectionPolicy": null,
+    "dataDeletionDetectionPolicy": null
+}

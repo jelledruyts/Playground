@@ -1,3 +1,11 @@
+# This sample creates an Azure Cognitive Search service and a Storage account with a number of sample
+# files uploaded to Blob storage. These files are then automatically indexed into the search service.
+# Each blob has a "DocumentType" and "BusinessImpact" metadata entry which is attached to the actual
+# blobs in the storage container.
+# The file contents are analyzed by a skillset which uses Azure Cognitive Services to detect the
+# people, organizations, locations and other entities; it also provides language detection.
+# This information is then stored on each document in the search index.
+
 # Main variables
 REGION=westeurope
 RGNAME=jdcognitivesearch
@@ -5,7 +13,6 @@ RGNAME=jdcognitivesearch
 # Derived variables
 STORAGEACCOUNTNAME=$RGNAME"storage"
 STORAGEACCOUNTCONTAINERNAME=samplefiles
-APPINSIGHTSNAME=$RGNAME"appinsights"
 COGNITIVESERVICESNAME=$RGNAME"cognitiveservices"
 COGNITIVESEARCHNAME=$RGNAME"cognitivesearch"
 DATASOURCENAME=$STORAGEACCOUNTCONTAINERNAME-datasource
@@ -21,13 +28,15 @@ az storage container create --connection-string $STORAGEACCOUNTCONNECTIONSTRING 
 az cognitiveservices account create -l $REGION -g $RGNAME -n $COGNITIVESERVICESNAME --kind CognitiveServices --sku S0 --yes
 COGNITIVESERVICESKEY=$(az cognitiveservices account keys list -g $RGNAME -n $COGNITIVESERVICESNAME --query key1 --output tsv)
 
-# Upload sample data to blob storage container and apply custom metadata tags "DocumentType" and "BusinessImpact" as used in the search index
-az storage blob upload-batch --connection-string $STORAGEACCOUNTCONNECTIONSTRING -d $STORAGEACCOUNTCONTAINERNAME -s "./samplefiles"
+# Upload sample data to blob storage container
+az storage blob upload-batch --connection-string $STORAGEACCOUNTCONNECTIONSTRING -d $STORAGEACCOUNTCONTAINERNAME -s "../samplefiles"
+
+# Apply custom metadata tags "DocumentType" and "BusinessImpact" to each blob to be used in the search index
 BUSINESSIMPACTS=("High" "Medium" "Low")
-for DOCUMENTTYPEDIR in ./samplefiles/*; do
+for DOCUMENTTYPEDIR in ../samplefiles/*; do
     for FILENAME in $DOCUMENTTYPEDIR/*; do
-        RELATIVEFILENAME=${FILENAME:14}
-        DOCUMENTTYPE=${DOCUMENTTYPEDIR:14}
+        RELATIVEFILENAME=${FILENAME:15}
+        DOCUMENTTYPE=${DOCUMENTTYPEDIR:15}
         BUSINESSIMPACT=${BUSINESSIMPACTS[$RANDOM % ${#BUSINESSIMPACTS[@]}]}
         az storage blob metadata update --connection-string $STORAGEACCOUNTCONNECTIONSTRING --container-name $STORAGEACCOUNTCONTAINERNAME --name "$RELATIVEFILENAME" --metadata "DocumentType=$DOCUMENTTYPE" "BusinessImpact=$BUSINESSIMPACT"
     done

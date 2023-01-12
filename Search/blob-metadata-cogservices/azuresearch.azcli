@@ -1,9 +1,10 @@
 # This sample creates an Azure Cognitive Search service and a Storage account with a number of sample
 # files uploaded to Blob storage. These files are then automatically indexed into the search service.
-# Each blob has a "DocumentType" and "BusinessImpact" metadata entry which is stored in a separate
-# data source (Azure Table Storage in this case) and indexed into the same search index. This avoids
-# the size limitation of metadata on individual blobs in a storage container by separating it out to
-# a completely separate metadata store which is still indexed automatically onto the same document.
+# Each blob has a "DocumentType" and "BusinessImpact" metadata entry which is attached to the actual
+# blobs in the storage container.
+# The file contents are analyzed by a skillset which uses Azure Cognitive Services to detect the
+# people, organizations, locations and other entities; it also provides language detection.
+# This information is then stored on each document in the search index.
 
 # Main variables
 REGION=westeurope
@@ -12,78 +13,69 @@ RGNAME=jdcognitivesearch
 # Derived variables
 STORAGEACCOUNTNAME=$RGNAME"storage"
 STORAGEACCOUNTCONTAINERNAME=samplefiles
-STORAGEACCOUNTTABLENAME=$STORAGEACCOUNTCONTAINERNAME"metadata"
+COGNITIVESERVICESNAME=$RGNAME"cognitiveservices"
 COGNITIVESEARCHNAME=$RGNAME"cognitivesearch"
+DATASOURCENAME=$STORAGEACCOUNTCONTAINERNAME-datasource
+SKILLSETNAME=$STORAGEACCOUNTCONTAINERNAME-skillset
 INDEXNAME=$STORAGEACCOUNTCONTAINERNAME-index
-BLOBDATASOURCENAME=$STORAGEACCOUNTCONTAINERNAME-blob-datasource
-BLOBINDEXERNAME=$STORAGEACCOUNTCONTAINERNAME-blob-indexer
-TABLEDATASOURCENAME=$STORAGEACCOUNTCONTAINERNAME-table-datasource
-TABLEINDEXERNAME=$STORAGEACCOUNTCONTAINERNAME-table-indexer
-PARTITIONKEY=$STORAGEACCOUNTCONTAINERNAME
+INDEXERNAME=$STORAGEACCOUNTCONTAINERNAME-indexer
 
 # Create Resource Group and supporting services
 az group create -l $REGION -n $RGNAME
 az storage account create -l $REGION -g $RGNAME -n $STORAGEACCOUNTNAME --kind StorageV2 --sku Standard_LRS
 STORAGEACCOUNTCONNECTIONSTRING=$(az storage account show-connection-string -g $RGNAME -n $STORAGEACCOUNTNAME --query connectionString --output tsv)
 az storage container create --connection-string $STORAGEACCOUNTCONNECTIONSTRING --name $STORAGEACCOUNTCONTAINERNAME --public-access off
-az storage table create --connection-string $STORAGEACCOUNTCONNECTIONSTRING --name $STORAGEACCOUNTTABLENAME
+az cognitiveservices account create -l $REGION -g $RGNAME -n $COGNITIVESERVICESNAME --kind CognitiveServices --sku S0 --yes
+COGNITIVESERVICESKEY=$(az cognitiveservices account keys list -g $RGNAME -n $COGNITIVESERVICESNAME --query key1 --output tsv)
 
 # Upload sample data to blob storage container
 az storage blob upload-batch --connection-string $STORAGEACCOUNTCONNECTIONSTRING -d $STORAGEACCOUNTCONTAINERNAME -s "../samplefiles"
 
-# Upload custom metadata tags "DocumentType" and "BusinessImpact" to table storage to be used in the search index
-BLOBNAMES=$(az storage blob list --connection-string $STORAGEACCOUNTCONNECTIONSTRING --container-name $STORAGEACCOUNTCONTAINERNAME --query "[].name" --output tsv)
-IFS=$'\n' # Use a newline as the separator for the list of blob names returned from the previous command
-for BLOBNAME in $BLOBNAMES; do
-    BLOBURL=$(az storage blob url --connection-string $STORAGEACCOUNTCONNECTIONSTRING --container-name $STORAGEACCOUNTCONTAINERNAME --name $BLOBNAME --output tsv)
-    DOCUMENTTYPE=${BLOBNAME%/*} # Take the folder path of the blob name (i.e. everything before the last '/') as the document type
-    BUSINESSIMPACT=${BUSINESSIMPACTS[$RANDOM % ${#BUSINESSIMPACTS[@]}]}
-    # Base64 encode the blob URL so it can be used as a unique RowKey in table storage (see https://learn.microsoft.com/en-us/rest/api/storageservices/understanding-the-table-service-data-model#characters-disallowed-in-key-fields)
-    ROWKEY=$(echo $BLOBURL | base64 --wrap=0)
-    # Create a row in the table with the "metadata_storage_path" for the document key as well as all the metadata to be added to the search index
-    # Note: when using a partition key and row key which together form the same (base64 encoded) value as the metadata_storage_path,
-    # but without explicitly creating a "metadata_storage_path" column in table storage to map to the key field, the service returns:
-    # {"error":{"code":"","message":"Data source does not contain column 'metadata_storage_path', which is required because it maps to the document key field 'metadata_storage_path' in the index 'samplefiles-index'. Ensure that the 'metadata_storage_path' column is present in the data source, or add a field mapping that maps one of the existing column names to 'metadata_storage_path'."}}
-    az storage entity insert --connection-string $STORAGEACCOUNTCONNECTIONSTRING --table-name $STORAGEACCOUNTTABLENAME --entity PartitionKey=$PARTITIONKEY RowKey=$ROWKEY metadata_storage_path=$BLOBURL DocumentType=$DOCUMENTTYPE BusinessImpact=$BUSINESSIMPACT
+# Apply custom metadata tags "DocumentType" and "BusinessImpact" to each blob to be used in the search index
+BUSINESSIMPACTS=("High" "Medium" "Low")
+for DOCUMENTTYPEDIR in ../samplefiles/*; do
+    for FILENAME in $DOCUMENTTYPEDIR/*; do
+        RELATIVEFILENAME=${FILENAME:15}
+        DOCUMENTTYPE=${DOCUMENTTYPEDIR:15}
+        BUSINESSIMPACT=${BUSINESSIMPACTS[$RANDOM % ${#BUSINESSIMPACTS[@]}]}
+        az storage blob metadata update --connection-string $STORAGEACCOUNTCONNECTIONSTRING --container-name $STORAGEACCOUNTCONTAINERNAME --name "$RELATIVEFILENAME" --metadata "DocumentType=$DOCUMENTTYPE" "BusinessImpact=$BUSINESSIMPACT"
+    done
 done
-
 
 # Create Azure Cognitive Search
 az search service create -l $REGION -g $RGNAME -n $COGNITIVESEARCHNAME \
     --sku Basic --partition-count 1 --replica-count 1
 COGNITIVESEARCHADMINKEY=$(az search admin-key show -g $RGNAME --service-name $COGNITIVESEARCHNAME --query primaryKey --output tsv)
 
-# Create index for the files and their metadata
-cat "azuresearch-index.json" | \
+# Create data source for blob storage container
+cat "azuresearch-storage-datasource.json" | \
+    awk '{sub(/__datasourceName__/,"'$DATASOURCENAME'")}1' | awk '{sub(/__connectionString__/,"'$STORAGEACCOUNTCONNECTIONSTRING'")}1' | awk '{sub(/__containerName__/,"'$STORAGEACCOUNTCONTAINERNAME'")}1' | \
+    curl -X PUT "https://$COGNITIVESEARCHNAME.search.windows.net/datasources/$DATASOURCENAME?api-version=2019-05-06" \
+    -H "Content-Type: application/json" -H "api-key: $COGNITIVESEARCHADMINKEY" \
+    -d @-
+
+# Create skillset for blob storage indexer
+cat "azuresearch-storage-skillset.json" | \
+    awk '{sub(/__skillsetName__/,"'$SKILLSETNAME'")}1' | awk '{sub(/__cognitiveServicesName__/,"'$COGNITIVESERVICESNAME'")}1' | awk '{sub(/__cognitiveServicesKey__/,"'$COGNITIVESERVICESKEY'")}1' | \
+    curl -X PUT "https://$COGNITIVESEARCHNAME.search.windows.net/skillsets/$SKILLSETNAME?api-version=2019-05-06" \
+    -H "Content-Type: application/json" -H "api-key: $COGNITIVESEARCHADMINKEY" \
+    -d @-
+
+# Create index for blob storage files
+cat "azuresearch-storage-index.json" | \
     awk '{sub(/__indexName__/,"'$INDEXNAME'")}1' | \
     curl -X PUT "https://$COGNITIVESEARCHNAME.search.windows.net/indexes/$INDEXNAME?api-version=2019-05-06" \
     -H "Content-Type: application/json" -H "api-key: $COGNITIVESEARCHADMINKEY" \
     -d @-
 
-# Create data source for blob storage
-cat "azuresearch-blob-datasource.json" | \
-    awk '{sub(/__datasourceName__/,"'$BLOBDATASOURCENAME'")}1' | awk '{sub(/__connectionString__/,"'$STORAGEACCOUNTCONNECTIONSTRING'")}1' | awk '{sub(/__containerName__/,"'$STORAGEACCOUNTCONTAINERNAME'")}1' | \
-    curl -X PUT "https://$COGNITIVESEARCHNAME.search.windows.net/datasources/$BLOBDATASOURCENAME?api-version=2019-05-06" \
+# Create indexer for blob storage container
+cat "azuresearch-storage-indexer.json" | \
+    awk '{sub(/__indexerName__/,"'$INDEXERNAME'")}1' | awk '{sub(/__datasourceName__/,"'$DATASOURCENAME'")}1' | awk '{sub(/__skillsetName__/,"'$SKILLSETNAME'")}1' | awk '{sub(/__indexName__/,"'$INDEXNAME'")}1' | \
+    curl -X PUT "https://$COGNITIVESEARCHNAME.search.windows.net/indexers/$INDEXERNAME?api-version=2019-05-06" \
     -H "Content-Type: application/json" -H "api-key: $COGNITIVESEARCHADMINKEY" \
     -d @-
 
-# Create indexer for blob storage
-cat "azuresearch-blob-indexer.json" | \
-    awk '{sub(/__indexerName__/,"'$BLOBINDEXERNAME'")}1' | awk '{sub(/__datasourceName__/,"'$BLOBDATASOURCENAME'")}1' | awk '{sub(/__indexName__/,"'$INDEXNAME'")}1' | \
-    curl -X PUT "https://$COGNITIVESEARCHNAME.search.windows.net/indexers/$BLOBINDEXERNAME?api-version=2019-05-06" \
-    -H "Content-Type: application/json" -H "api-key: $COGNITIVESEARCHADMINKEY" \
-    -d @-
-
-# Create data source for table storage
-cat "azuresearch-table-datasource.json" | \
-    awk '{sub(/__datasourceName__/,"'$TABLEDATASOURCENAME'")}1' | awk '{sub(/__connectionString__/,"'$STORAGEACCOUNTCONNECTIONSTRING'")}1' | awk '{sub(/__tableName__/,"'$STORAGEACCOUNTTABLENAME'")}1' | awk '{sub(/__partitionKey__/,"'$PARTITIONKEY'")}1' | \
-    curl -X PUT "https://$COGNITIVESEARCHNAME.search.windows.net/datasources/$TABLEDATASOURCENAME?api-version=2019-05-06" \
-    -H "Content-Type: application/json" -H "api-key: $COGNITIVESEARCHADMINKEY" \
-    -d @-
-
-# Create indexer for table storage
-cat "azuresearch-table-indexer.json" | \
-    awk '{sub(/__indexerName__/,"'$TABLEINDEXERNAME'")}1' | awk '{sub(/__datasourceName__/,"'$TABLEDATASOURCENAME'")}1' | awk '{sub(/__indexName__/,"'$INDEXNAME'")}1' | \
-    curl -X PUT "https://$COGNITIVESEARCHNAME.search.windows.net/indexers/$TABLEINDEXERNAME?api-version=2019-05-06" \
-    -H "Content-Type: application/json" -H "api-key: $COGNITIVESEARCHADMINKEY" \
-    -d @-
+# Search examples:
+# - diversity
+# - diversity&$select=metadata_storage_name,metadata_storage_content_type,metadata_storage_size,metadata_creation_date,metadata_storage_last_modified,DocumentType,BusinessImpact
+# - $select=metadata_storage_name&$filter=DocumentType eq 'Reports' and BusinessImpact eq 'High'

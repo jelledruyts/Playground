@@ -185,7 +185,7 @@
             "synonymMaps": []
         },
         {
-            "name": "DocumentType",
+            "name": "document_type",
             "type": "Edm.String",
             "searchable": true,
             "filterable": true,
@@ -199,7 +199,7 @@
             "synonymMaps": []
         },
         {
-            "name": "BusinessImpact",
+            "name": "business_impact",
             "type": "Edm.String",
             "searchable": true,
             "filterable": true,

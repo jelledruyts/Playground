@@ -1,6 +1,6 @@
 # This sample creates an Azure Cognitive Search service and a Storage account with a number of sample
 # files uploaded to Blob storage. These files are then automatically indexed into the search service.
-# Each blob has a "DocumentType" and "BusinessImpact" metadata entry which is attached to the actual
+# Each blob has a "document_type" and "business_impact" metadata entry which is attached to the actual
 # blobs in the storage container.
 # The file contents are analyzed by a skillset which uses Azure Cognitive Services to detect the
 # people, organizations, locations and other entities; it also provides language detection.
@@ -31,14 +31,15 @@ COGNITIVESERVICESKEY=$(az cognitiveservices account keys list -g $RGNAME -n $COG
 # Upload sample data to blob storage container
 az storage blob upload-batch --connection-string $STORAGEACCOUNTCONNECTIONSTRING -d $STORAGEACCOUNTCONTAINERNAME -s "../samplefiles"
 
-# Apply custom metadata tags "DocumentType" and "BusinessImpact" to each blob to be used in the search index
+# Apply custom metadata tags "document_type" and "business_impact" to each blob to be used in the search index
+# The "document_type" is set to the containing folder, and the "business_impact" is generated at random from an array
 BUSINESSIMPACTS=("High" "Medium" "Low")
 for DOCUMENTTYPEDIR in ../samplefiles/*; do
     for FILENAME in $DOCUMENTTYPEDIR/*; do
         RELATIVEFILENAME=${FILENAME:15}
         DOCUMENTTYPE=${DOCUMENTTYPEDIR:15}
         BUSINESSIMPACT=${BUSINESSIMPACTS[$RANDOM % ${#BUSINESSIMPACTS[@]}]}
-        az storage blob metadata update --connection-string $STORAGEACCOUNTCONNECTIONSTRING --container-name $STORAGEACCOUNTCONTAINERNAME --name "$RELATIVEFILENAME" --metadata "DocumentType=$DOCUMENTTYPE" "BusinessImpact=$BUSINESSIMPACT"
+        az storage blob metadata update --connection-string $STORAGEACCOUNTCONNECTIONSTRING --container-name $STORAGEACCOUNTCONTAINERNAME --name "$RELATIVEFILENAME" --metadata "document_type=$DOCUMENTTYPE" "business_impact=$BUSINESSIMPACT"
     done
 done
 
@@ -77,5 +78,5 @@ cat "azuresearch-storage-indexer.json" | \
 
 # Search examples:
 # - diversity
-# - diversity&$select=metadata_storage_name,metadata_storage_content_type,metadata_storage_size,metadata_creation_date,metadata_storage_last_modified,DocumentType,BusinessImpact
-# - $select=metadata_storage_name&$filter=DocumentType eq 'Reports' and BusinessImpact eq 'High'
+# - diversity&$select=metadata_storage_name,metadata_storage_content_type,metadata_storage_size,metadata_creation_date,metadata_storage_last_modified,document_type,business_impact
+# - $select=metadata_storage_name&$filter=document_type eq 'Reports' and BusinessImpact eq 'High'

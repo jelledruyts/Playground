@@ -80,3 +80,10 @@ cat "azuresearch-table-indexer.json" | \
 
 # Perform a query which returns a single document with just its file name in Blob Storage and the metadata properties from Table Storage
 curl "https://$COGNITIVESEARCHNAME.search.windows.net/indexes/$INDEXNAME/docs?api-version=2020-06-30&\$top=1&\$select=metadata_storage_name,document_type,business_impact" -H "Content-Type: application/json" -H "api-key: $COGNITIVESEARCHADMINKEY"
+
+# Cleanup indexers, datasources and indexes.
+curl -X DELETE "https://$COGNITIVESEARCHNAME.search.windows.net/indexers/$TABLEINDEXERNAME?api-version=2019-05-06" -H "api-key: $COGNITIVESEARCHADMINKEY"
+curl -X DELETE "https://$COGNITIVESEARCHNAME.search.windows.net/datasources/$TABLEDATASOURCENAME?api-version=2019-05-06" -H "api-key: $COGNITIVESEARCHADMINKEY"
+curl -X DELETE "https://$COGNITIVESEARCHNAME.search.windows.net/indexers/$BLOBINDEXERNAME?api-version=2019-05-06" -H "api-key: $COGNITIVESEARCHADMINKEY"
+curl -X DELETE "https://$COGNITIVESEARCHNAME.search.windows.net/datasources/$BLOBDATASOURCENAME?api-version=2019-05-06" -H "api-key: $COGNITIVESEARCHADMINKEY"
+curl -X DELETE "https://$COGNITIVESEARCHNAME.search.windows.net/indexes/$INDEXNAME?api-version=2019-05-06" -H "api-key: $COGNITIVESEARCHADMINKEY"

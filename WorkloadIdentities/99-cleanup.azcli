@@ -1,0 +1,5 @@
+# If the service principal was logged in to the Azure CLI, login interactively again.
+az login --tenant $TENANT_ID
+
+# Delete the service principal.
+az ad app delete --id $SP_APPID

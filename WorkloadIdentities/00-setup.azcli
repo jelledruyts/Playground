@@ -1,0 +1,19 @@
+# Prerequisites: Bash, Azure CLI, curl, jq.
+
+# Set configuration variables.
+TENANT_ID=jelledruyts.onmicrosoft.com
+
+# Login interactively.
+az login --tenant $TENANT_ID
+
+# Create the Service Principal representing the workload identity.
+# NOTE: This can take some time to propagate.
+SP=$(az ad sp create-for-rbac --name WorkloadIdentity)
+SP_APPID=$(echo $SP | jq -r .appId)
+SP_PASSWORD=$(echo $SP | jq -r .password)
+SP_OBJECTID=$(az ad sp list --filter "appId eq '$SP_APPID'" --query '[0].id' -o tsv)
+echo "Service Principal created: App ID '$SP_APPID', Object ID '$SP_OBJECTID'."
+
+# Look up the object ID of the Service Principal representing the Microsoft Graph API in the current tenant.
+GRAPH_APPID=00000003-0000-0000-c000-000000000000
+GRAPH_OBJECTID=$(az ad sp list --filter "appId eq '$GRAPH_APPID'" --query '[0].id' -o tsv)

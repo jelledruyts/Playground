@@ -1,0 +1,35 @@
+# Grant the Workload Identity the "Application.ReadWrite.OwnedBy" application permission on Microsoft Graph.
+# See https://learn.microsoft.com/graph/permissions-reference?view=graph-rest-1.0#all-permissions-and-ids.
+GRAPH_APPROLEID=18a4783c-866b-4cc7-a460-3d5e5662c884
+
+# Creating an app role assignment is the same as granting admin consent for that permission.
+# NOTE: This can take some time to propagate.
+az rest -m POST -u https://graph.microsoft.com/v1.0/servicePrincipals/$SP_OBJECTID/appRoleAssignments -b "{\"principalId\": \"$SP_OBJECTID\", \"resourceId\": \"$GRAPH_OBJECTID\",\"appRoleId\": \"$GRAPH_APPROLEID\"}"
+
+# Use a client credentials flow to acquire a token from Azure AD for the service principal, targeting the Microsoft Graph.
+SP_AUTH=$(curl -s -X POST -d "grant_type=client_credentials&client_id=$SP_APPID&client_secret=$SP_PASSWORD&scope=https://graph.microsoft.com/.default" https://login.microsoftonline.com/$TENANT_ID/oauth2/v2.0/token)
+SP_TOKEN=$(echo $SP_AUTH | jq -r .access_token)
+
+# For debugging purposes, show the app roles contained in the access token.
+SP_TOKEN_PARTS=(${SP_TOKEN//./ })
+SP_TOKEN_APPROLES=$(echo ${SP_TOKEN_PARTS[1]} | base64 -d | jq .roles)
+echo "App roles: $SP_TOKEN_APPROLES"
+
+# Call the Microsoft Graph API using the token and list all apps (using the granted "Application.ReadWrite.OwnedBy" permission).
+APPS=$(curl -s -X GET -H "Authorization: Bearer $SP_TOKEN" https://graph.microsoft.com/v1.0/applications)
+
+# Attempt to update the display name of an existing app (this should fail).
+APPS_FIRST_ID=$(echo $APPS | jq -r ".value | .[0].id")
+APPS_FIRST_DISPLAYNAME=$(echo $APPS | jq -r ".value | .[0].displayName")
+curl -s -X PATCH -H "Authorization: Bearer $SP_TOKEN" -H "Content-Type: application/json" https://graph.microsoft.com/v1.0/applications/$APPS_FIRST_ID -d "{\"displayName\":\"$APPS_FIRST_DISPLAYNAME - UPDATED\"}"
+
+# Create a new app (this should succeed).
+OWNED_APP=$(curl -s -X POST -H "Authorization: Bearer $SP_TOKEN" -H "Content-Type: application/json" https://graph.microsoft.com/v1.0/applications -d '{"displayName":"WorkloadIdentity Owned App"}')
+
+# Modify the new app, which is "owned by" the Workload Identity (so this should succeed).
+OWNED_APP_ID=$(echo $OWNED_APP | jq -r .id)
+OWNED_APP_DISPLAYNAME=$(echo $OWNED_APP | jq -r .displayName)
+curl -s -X PATCH -H "Authorization: Bearer $SP_TOKEN" -H "Content-Type: application/json" https://graph.microsoft.com/v1.0/applications/$OWNED_APP_ID -d "{\"displayName\":\"$OWNED_APP_DISPLAYNAME - UPDATED\"}"
+
+# Delete the new app.
+curl -s -X DELETE -H "Authorization: Bearer $SP_TOKEN" https://graph.microsoft.com/v1.0/applications/$OWNED_APP_ID

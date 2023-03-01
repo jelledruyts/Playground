@@ -67,6 +67,6 @@ curl -s -X DELETE -H "Authorization: Bearer $SP_TOKEN" https://graph.microsoft.c
 
 #################### ADMINISTRATOR ####################
 
-# Remove the role-assignable group again.
-# See https://learn.microsoft.com/azure/active-directory/roles/groups-create-eligible#microsoft-graph-api.
-az rest -m DELETE -u https://graph.microsoft.com/v1.0/groups/$GROUP_ID
+# Remove the group app and the role-assignable group again.
+az ad app delete --id $GROUP_APP_APPID
+az ad group delete --group $GROUP_ID

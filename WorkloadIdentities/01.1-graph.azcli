@@ -1,16 +1,23 @@
+#################### ADMINISTRATOR ####################
+
 # Grant the service principal the "Sites.Read.All" application permission on Microsoft Graph.
 # See https://learn.microsoft.com/graph/permissions-reference?view=graph-rest-1.0#all-permissions-and-ids.
 GRAPH_APPROLEID=332a536c-c7ef-4017-ab91-336970924f0d
 
 # Creating an app role assignment is the same as granting admin consent for that permission.
-# NOTE: This can take some time to propagate.
-az rest -m POST -u https://graph.microsoft.com/v1.0/servicePrincipals/$SP_OBJECTID/appRoleAssignments -b "{\"principalId\": \"$SP_OBJECTID\", \"resourceId\": \"$GRAPH_OBJECTID\",\"appRoleId\": \"$GRAPH_APPROLEID\"}"
+az rest -m POST -u https://graph.microsoft.com/v1.0/servicePrincipals/$SP_OBJECTID/appRoleAssignments -b '{
+    "principalId": "'$SP_OBJECTID'",
+    "resourceId": "'$GRAPH_OBJECTID'",
+    "appRoleId": "'$GRAPH_APPROLEID'"
+}'
+
+#################### WORKLOAD IDENTITY ####################
 
 # Use a client credentials flow to acquire a token from Azure AD for the service principal, targeting the Microsoft Graph.
 SP_AUTH=$(curl -s -X POST -d "grant_type=client_credentials&client_id=$SP_APPID&client_secret=$SP_PASSWORD&scope=https://graph.microsoft.com/.default" https://login.microsoftonline.com/$TENANT_ID/oauth2/v2.0/token)
 SP_TOKEN=$(echo $SP_AUTH | jq -r .access_token)
 
-# For debugging purposes, show the app roles contained in the access token.
+# For debugging purposes, show the app roles contained in the access token as the "roles" claim.
 SP_TOKEN_PARTS=(${SP_TOKEN//./ })
 SP_TOKEN_APPROLES=$(echo ${SP_TOKEN_PARTS[1]} | base64 -d | jq .roles)
 echo "App roles: $SP_TOKEN_APPROLES"

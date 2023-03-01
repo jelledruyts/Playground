@@ -1,0 +1,72 @@
+#################### ADMINISTRATOR ####################
+
+# Create a role-assignable group with the Workload Identity as an Owner of the group.
+# See https://learn.microsoft.com/azure/active-directory/roles/groups-create-eligible#microsoft-graph-api.
+GROUP=$(az rest -m POST -u https://graph.microsoft.com/v1.0/groups -b '{
+    "displayName": "'$PREFIX'Directory Readers",
+    "mailNickname": "'$PREFIX'directory-readers",
+    "isAssignableToRole": true,
+    "mailEnabled": false,
+    "securityEnabled": true,
+    "visibility": "Private",
+    "owners@odata.bind": [
+        "https://graph.microsoft.com/v1.0/serviceprincipals/'$SP_OBJECTID'"
+    ]
+}')
+GROUP_ID=$(echo $GROUP | jq -r .id)
+
+# Assign the "Directory Readers" role to the group.
+# See https://learn.microsoft.com/azure/active-directory/roles/groups-assign-role#microsoft-graph-api
+DIRECTORY_ROLEID=88d8e3e3-8f55-4a1e-953a-9b9898b8876b
+az rest -m POST -u https://graph.microsoft.com/v1.0/roleManagement/directory/roleAssignments -b '{
+    "principalId": "'$GROUP_ID'",
+    "roleDefinitionId": "'$DIRECTORY_ROLEID'",
+    "directoryScopeId": "/"
+}'
+
+# Create another app that the workload identity can add to the role-assignable group,
+# and by doing that grant it the directory role through the group membership.
+GROUP_APP=$(az ad sp create-for-rbac --name "$PREFIX"App-1)
+GROUP_APP_APPID=$(echo $GROUP_APP | jq -r .appId)
+GROUP_APP_OBJECTID=$(az ad sp list --filter "appId eq '$GROUP_APP_APPID'" --query "[0].id" -o tsv)
+GROUP_APP_PASSWORD=$(echo $GROUP_APP | jq -r .password)
+
+#################### WORKLOAD IDENTITY ####################
+
+# Use a client credentials flow to acquire a token from Azure AD for the service principal, targeting the Microsoft Graph.
+SP_AUTH=$(curl -s -X POST -d "grant_type=client_credentials&client_id=$SP_APPID&client_secret=$SP_PASSWORD&scope=https://graph.microsoft.com/.default" https://login.microsoftonline.com/$TENANT_ID/oauth2/v2.0/token)
+SP_TOKEN=$(echo $SP_AUTH | jq -r .access_token)
+
+# Call the Microsoft Graph API using the token and add the group app to the role-assignable group
+# using the Owner permission of the group and requiring no other directory permissions.
+# See https://learn.microsoft.com/graph/api/group-post-members?view=graph-rest-1.0&tabs=http.
+curl -s -X POST -H "Authorization: Bearer $SP_TOKEN" -H "Content-Type: application/json" https://graph.microsoft.com/v1.0/groups/$GROUP_ID/members/\$ref -d '{
+    "@odata.id": "https://graph.microsoft.com/v1.0/serviceprincipals/'$GROUP_APP_OBJECTID'"
+}'
+
+#################### GROUP APP ####################
+
+# Use a client credentials flow to acquire a token from Azure AD for the group app, targeting the Microsoft Graph.
+GROUP_APP_AUTH=$(curl -s -X POST -d "grant_type=client_credentials&client_id=$GROUP_APP_APPID&client_secret=$GROUP_APP_PASSWORD&scope=https://graph.microsoft.com/.default" https://login.microsoftonline.com/$TENANT_ID/oauth2/v2.0/token)
+GROUP_APP_TOKEN=$(echo $GROUP_APP_AUTH | jq -r .access_token)
+
+# For debugging purposes, show the directory roles contained in the access token as the "wids" claim.
+GROUP_APP_TOKEN_PARTS=(${GROUP_APP_TOKEN//./ })
+GROUP_APP_TOKEN_DIRECTORYROLES=$(echo ${GROUP_APP_TOKEN_PARTS[1]} | base64 -d | jq .wids)
+echo "Directory roles: $GROUP_APP_TOKEN_DIRECTORYROLES"
+
+# Call the Microsoft Graph API using the token and list all users using the "Directory Reader" role
+# granted through the role-assignable group membership.
+curl -s -X GET -H "Authorization: Bearer $GROUP_APP_TOKEN" https://graph.microsoft.com/v1.0/users
+
+#################### WORKLOAD IDENTITY ####################
+
+# Remove the app from the role-assignable group again.
+# See https://learn.microsoft.com/graph/api/group-delete-members?view=graph-rest-1.0&tabs=http.
+curl -s -X DELETE -H "Authorization: Bearer $SP_TOKEN" https://graph.microsoft.com/v1.0/groups/$GROUP_ID/members/$GROUP_APP_OBJECTID/\$ref
+
+#################### ADMINISTRATOR ####################
+
+# Remove the role-assignable group again.
+# See https://learn.microsoft.com/azure/active-directory/roles/groups-create-eligible#microsoft-graph-api.
+az rest -m DELETE -u https://graph.microsoft.com/v1.0/groups/$GROUP_ID

@@ -5,8 +5,11 @@ RESOURCEGROUP_NAME="$PREFIX"ResourceGroup
 REGION="westeurope"
 az group create --name $RESOURCEGROUP_NAME --location $REGION
 
-# Add the Workload Identity as a Contributor to the resource group.
+# Add the Workload Identity as a Contributor to the resource group so it can deploy resources.
 az role assignment create --assignee-object-id $WORKLOAD_SP_OBJECTID --assignee-principal-type ServicePrincipal --role Contributor --resource-group $RESOURCEGROUP_NAME
+
+# Grant the Workload Identity the User Access Administrator role so it can assign permissions within the resource group.
+az role assignment create --assignee-object-id $WORKLOAD_SP_OBJECTID --assignee-principal-type ServicePrincipal --role "User Access Administrator" --resource-group $RESOURCEGROUP_NAME
 
 #################### WORKLOAD IDENTITY ####################
 
@@ -17,7 +20,19 @@ az login --service-principal --username $WORKLOAD_APPID --password $WORKLOAD_SP_
 STORAGEACCOUNT_NAME="$PREFIX"storage"$RANDOM"
 STORAGEACCOUNT_NAME=${STORAGEACCOUNT_NAME,,} # Convert to lowercase.
 STORAGEACCOUNT_NAME=${STORAGEACCOUNT_NAME//[^[:alnum:]]/} # Remove any non-alphanumeric characters.
-az storage account create --name $STORAGEACCOUNT_NAME --resource-group $RESOURCEGROUP_NAME --sku Standard_LRS
+STORAGEACCOUNT=$(az storage account create --name $STORAGEACCOUNT_NAME --resource-group $RESOURCEGROUP_NAME --sku Standard_LRS)
+STORAGEACCOUNT_RESOURCE_ID=$(echo $STORAGEACCOUNT | jq -r .id)
+
+# Create a user-assigned managed identity which needs access to the Storage Account.
+UAMI=$(az identity create --name "$PREFIX"ManagedIdentity --resource-group $RESOURCEGROUP_NAME)
+UAMI_RESOURCE_ID=$(echo $UAMI | jq -r .id)
+UAMI_SP_OBJECTID=$(echo $UAMI | jq -r .principalId)
+
+# Grant the user-assigned managed identity access to the Storage Account.
+az role assignment create --assignee-object-id $UAMI_SP_OBJECTID --assignee-principal-type ServicePrincipal --role "Storage Blob Data Contributor" --scope $STORAGEACCOUNT_RESOURCE_ID
+
+# Remove the user-assigned managed identity.
+az identity delete --ids $UAMI_RESOURCE_ID
 
 # Remove the Storage Account.
 az storage account delete --name $STORAGEACCOUNT_NAME --resource-group $RESOURCEGROUP_NAME --yes

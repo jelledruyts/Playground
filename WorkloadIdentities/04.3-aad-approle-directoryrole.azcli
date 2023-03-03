@@ -1,0 +1,86 @@
+#################### ADMINISTRATOR ####################
+
+# Create a target app with an app role declaration that other apps will need.
+TARGET_APP=$(az ad app create --display-name "$PREFIX"TargetApp --app-roles '[{
+    "allowedMemberTypes": [ "Application" ],
+    "description": "Allows the calling app to create and manage expenses without a signed-in user.",
+    "displayName": "Read and write all expenses",
+    "isEnabled": "true",
+    "value": "Expenses.ReadWrite.All"
+}]')
+TARGET_APPID=$(echo $TARGET_APP | jq -r .appId)
+TARGET_APP_APPROLEID=$(echo $TARGET_APP | jq -r .appRoles[0].id)
+echo "Target App created: App ID '$TARGET_APPID', App Role ID '$TARGET_APP_APPROLEID'."
+
+# Create the service principal for the target app.
+TARGET_SP=$(az ad sp create --id $TARGET_APPID)
+TARGET_SP_OBJECTID=$(echo $TARGET_SP | jq -r .id)
+echo "Target Service Principal created: Object ID '$TARGET_SP_OBJECTID'."
+
+# Grant the Workload Identity the "Cloud Application Administrator" directory role in Azure AD
+# so that it can create new apps as well as grant the admin consent to them for other apps (except Microsoft Graph).
+# See https://learn.microsoft.com/azure/active-directory/roles/permissions-reference#cloud-application-administrator.
+DIRECTORY_ROLEID=158c047a-c907-4556-b7ef-446551a6b5f7
+az rest -m POST -u https://graph.microsoft.com/v1.0/roleManagement/directory/roleAssignments -b '{
+    "principalId": "'$WORKLOAD_SP_OBJECTID'",
+    "roleDefinitionId": "'$DIRECTORY_ROLEID'",
+    "directoryScopeId": "/"
+}'
+
+#################### WORKLOAD IDENTITY ####################
+
+# Use a client credentials flow to acquire a token from Azure AD for the service principal, targeting the Microsoft Graph.
+WORKLOAD_AUTH=$(curl -s -X POST -d "grant_type=client_credentials&client_id=$WORKLOAD_APPID&client_secret=$WORKLOAD_SP_PASSWORD&scope=https://graph.microsoft.com/.default" https://login.microsoftonline.com/$TENANT_ID/oauth2/v2.0/token)
+WORKLOAD_TOKEN=$(echo $WORKLOAD_AUTH | jq -r .access_token)
+
+# Create a new app which will act as the calling app towards the target app and which requires the app role.
+SOURCE_APP=$(curl -s -X POST -H "Authorization: Bearer $WORKLOAD_TOKEN" -H "Content-Type: application/json" https://graph.microsoft.com/v1.0/applications -d '{
+    "displayName": "'$PREFIX'SourceApp"
+}')
+SOURCE_APPID=$(echo $SOURCE_APP | jq -r .appId)
+SOURCE_APP_OBJECTID=$(echo $SOURCE_APP | jq -r .id)
+SOURCE_APP_PASSWORDCREDENTIAL=$(curl -s -X POST -H "Authorization: Bearer $WORKLOAD_TOKEN" -H "Content-Type: application/json" https://graph.microsoft.com/v1.0/applications/$SOURCE_APP_OBJECTID/addPassword -d '{
+    "passwordCredential": {
+        "displayName": "'$PREFIX'SourceApp-Password"
+    }
+}')
+SOURCE_APP_PASSWORD=$(echo $SOURCE_APP_PASSWORDCREDENTIAL | jq -r .secretText)
+echo "Source App created: App ID '$SOURCE_APPID', Object ID '$SOURCE_APP_OBJECTID'."
+
+# Create the service principal for the source app.
+SOURCE_SP=$(curl -s -X POST -H "Authorization: Bearer $WORKLOAD_TOKEN" -H "Content-Type: application/json" https://graph.microsoft.com/v1.0/servicePrincipals -d '{
+    "appId": "'$SOURCE_APPID'"
+}')
+SOURCE_SP_OBJECTID=$(echo $SOURCE_SP | jq -r .id)
+echo "Source Service Principal created: Object ID '$SOURCE_SP_OBJECTID'."
+
+# Grant the new app the "Expenses.ReadWrite.All" app role on the service principal of the target app,
+# using the Workload Identity's custom directory role which includes the app consent policy allowing it
+# to perform the admin consent.
+curl -s -X POST -H "Authorization: Bearer $WORKLOAD_TOKEN" -H "Content-Type: application/json" https://graph.microsoft.com/v1.0/servicePrincipals/$SOURCE_SP_OBJECTID/appRoleAssignments -d '{
+    "principalId": "'$SOURCE_SP_OBJECTID'",
+    "resourceId": "'$TARGET_SP_OBJECTID'",
+    "appRoleId": "'$TARGET_APP_APPROLEID'"
+}'
+
+#################### SOURCE APP ####################
+
+# Use a client credentials flow to acquire a token from Azure AD for the source app, targeting the target app.
+SOURCE_AUTH=$(curl -s -X POST -d "grant_type=client_credentials&client_id=$SOURCE_APPID&client_secret=$SOURCE_APP_PASSWORD&scope=$TARGET_APPID/.default" https://login.microsoftonline.com/$TENANT_ID/oauth2/v2.0/token)
+SOURCE_TOKEN=$(echo $SOURCE_AUTH | jq -r .access_token)
+
+# To demonstrate the source app has the "Expenses.ReadWrite.All" permission on the target app,
+# show the app roles contained in the access token as the "roles" claim.
+SOURCE_TOKEN_PARTS=(${SOURCE_TOKEN//./ })
+SOURCE_TOKEN_APPROLES=$(echo ${SOURCE_TOKEN_PARTS[1]} | base64 -d | jq .roles)
+echo "Source app roles: $SOURCE_TOKEN_APPROLES"
+
+#################### WORKLOAD IDENTITY ####################
+
+# Remove the source app.
+curl -s -X DELETE -H "Authorization: Bearer $WORKLOAD_TOKEN" https://graph.microsoft.com/v1.0/applications/$SOURCE_APP_OBJECTID
+
+#################### ADMINISTRATOR ####################
+
+# Remove the target app.
+az ad app delete --id $TARGET_APPID

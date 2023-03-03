@@ -3,20 +3,20 @@
 # Set configuration variables.
 TENANT_ID=jelledruyts.onmicrosoft.com
 TENANT_ID=MSDx413347.onmicrosoft.com
-PREFIX=ZT-
+PREFIX=WI-
 
 #################### ADMINISTRATOR ####################
 
 # Login interactively.
 az login --tenant $TENANT_ID
 
-# Create the Service Principal representing the workload identity.
-SP=$(az ad sp create-for-rbac --name "$PREFIX"WorkloadIdentity)
-SP_APPID=$(echo $SP | jq -r .appId)
-SP_OBJECTID=$(az ad sp list --filter "appId eq '$SP_APPID'" --query "[0].id" -o tsv)
-SP_PASSWORD=$(echo $SP | jq -r .password)
-echo "Service Principal created: App ID '$SP_APPID', Object ID '$SP_OBJECTID'."
+# Create the Service Principal representing the Workload Identity.
+WORKLOAD_SP=$(az ad sp create-for-rbac --name "$PREFIX"WorkloadIdentity)
+WORKLOAD_APPID=$(echo $WORKLOAD_SP | jq -r .appId)
+WORKLOAD_SP_OBJECTID=$(az ad sp list --filter "appId eq '$WORKLOAD_APPID'" --query "[0].id" -o tsv)
+WORKLOAD_SP_PASSWORD=$(echo $WORKLOAD_SP | jq -r .password)
+echo "Workload Identity Service Principal created: App ID '$WORKLOAD_APPID', Object ID '$WORKLOAD_SP_OBJECTID'."
 
 # Look up the object ID of the Service Principal representing the Microsoft Graph API in the current tenant.
 GRAPH_APPID=00000003-0000-0000-c000-000000000000
-GRAPH_OBJECTID=$(az ad sp list --filter "appId eq '$GRAPH_APPID'" --query "[0].id" -o tsv)
+GRAPH_SP_OBJECTID=$(az ad sp list --filter "appId eq '$GRAPH_APPID'" --query "[0].id" -o tsv)

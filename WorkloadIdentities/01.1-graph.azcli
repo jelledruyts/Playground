@@ -5,26 +5,26 @@
 GRAPH_APPROLEID=332a536c-c7ef-4017-ab91-336970924f0d
 
 # Creating an app role assignment is the same as granting admin consent for that permission.
-az rest -m POST -u https://graph.microsoft.com/v1.0/servicePrincipals/$SP_OBJECTID/appRoleAssignments -b '{
-    "principalId": "'$SP_OBJECTID'",
-    "resourceId": "'$GRAPH_OBJECTID'",
+az rest -m POST -u https://graph.microsoft.com/v1.0/servicePrincipals/$WORKLOAD_SP_OBJECTID/appRoleAssignments -b '{
+    "principalId": "'$WORKLOAD_SP_OBJECTID'",
+    "resourceId": "'$GRAPH_SP_OBJECTID'",
     "appRoleId": "'$GRAPH_APPROLEID'"
 }'
 
 #################### WORKLOAD IDENTITY ####################
 
 # Use a client credentials flow to acquire a token from Azure AD for the service principal, targeting the Microsoft Graph.
-SP_AUTH=$(curl -s -X POST -d "grant_type=client_credentials&client_id=$SP_APPID&client_secret=$SP_PASSWORD&scope=https://graph.microsoft.com/.default" https://login.microsoftonline.com/$TENANT_ID/oauth2/v2.0/token)
-SP_TOKEN=$(echo $SP_AUTH | jq -r .access_token)
+WORKLOAD_AUTH=$(curl -s -X POST -d "grant_type=client_credentials&client_id=$WORKLOAD_APPID&client_secret=$WORKLOAD_SP_PASSWORD&scope=https://graph.microsoft.com/.default" https://login.microsoftonline.com/$TENANT_ID/oauth2/v2.0/token)
+WORKLOAD_TOKEN=$(echo $WORKLOAD_AUTH | jq -r .access_token)
 
 # For debugging purposes, show the app roles contained in the access token as the "roles" claim.
-SP_TOKEN_PARTS=(${SP_TOKEN//./ })
-SP_TOKEN_APPROLES=$(echo ${SP_TOKEN_PARTS[1]} | base64 -d | jq .roles)
-echo "App roles: $SP_TOKEN_APPROLES"
+WORKLOAD_TOKEN_PARTS=(${WORKLOAD_TOKEN//./ })
+WORKLOAD_TOKEN_APPROLES=$(echo ${WORKLOAD_TOKEN_PARTS[1]} | base64 -d | jq .roles)
+echo "Workload Identity app roles: $WORKLOAD_TOKEN_APPROLES"
 
 # Call the Microsoft Graph API using the token and list all sites (using the granted "Sites.Read.All" permission).
-curl -s -X GET -H "Authorization: Bearer $SP_TOKEN" https://graph.microsoft.com/v1.0/sites
+curl -s -X GET -H "Authorization: Bearer $WORKLOAD_TOKEN" https://graph.microsoft.com/v1.0/sites
 
 # Alternatively, login as the service principal and call the Graph API using "az rest".
-az login --service-principal --username $SP_APPID --password $SP_PASSWORD --tenant $TENANT_ID --allow-no-subscriptions
+az login --service-principal --username $WORKLOAD_APPID --password $WORKLOAD_SP_PASSWORD --tenant $TENANT_ID --allow-no-subscriptions
 az rest -m GET -u https://graph.microsoft.com/v1.0/sites

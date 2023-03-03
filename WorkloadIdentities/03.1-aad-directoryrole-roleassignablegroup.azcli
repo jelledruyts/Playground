@@ -62,12 +62,12 @@ curl -s -X GET -H "Authorization: Bearer $GROUP_TOKEN" https://graph.microsoft.c
 
 #################### WORKLOAD IDENTITY ####################
 
-# Remove the app from the role-assignable group again.
+# Remove the app from the role-assignable group.
 # See https://learn.microsoft.com/graph/api/group-delete-members?view=graph-rest-1.0&tabs=http.
 curl -s -X DELETE -H "Authorization: Bearer $WORKLOAD_TOKEN" https://graph.microsoft.com/v1.0/groups/$GROUP_ID/members/$GROUP_SP_OBJECTID/\$ref
 
 #################### ADMINISTRATOR ####################
 
-# Remove the group app and the role-assignable group again.
+# Remove the group app and the role-assignable group.
 az ad app delete --id $GROUP_APPID
 az ad group delete --group $GROUP_ID

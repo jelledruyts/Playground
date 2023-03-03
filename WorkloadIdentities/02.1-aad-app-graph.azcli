@@ -25,11 +25,11 @@ echo "Workload Identity app roles: $WORKLOAD_TOKEN_APPROLES"
 APPS=$(curl -s -X GET -H "Authorization: Bearer $WORKLOAD_TOKEN" https://graph.microsoft.com/v1.0/applications)
 
 # Attempt to update the display name of an existing app (this should fail).
-APPS_FIRST_ID=$(echo $APPS | jq -r ".value | .[0].id")
+APPS_FIRST_OBJECTID=$(echo $APPS | jq -r ".value | .[0].id")
 APPS_FIRST_DISPLAYNAME=$(echo $APPS | jq -r ".value | .[0].displayName")
 echo "First app's display name: '$APPS_FIRST_DISPLAYNAME'"
-curl -s -X PATCH -H "Authorization: Bearer $WORKLOAD_TOKEN" -H "Content-Type: application/json" https://graph.microsoft.com/v1.0/applications/$APPS_FIRST_ID -d '{
-    "displayName": "'$APPS_FIRST_DISPLAYNAME' - UPDATED"
+curl -s -X PATCH -H "Authorization: Bearer $WORKLOAD_TOKEN" -H "Content-Type: application/json" https://graph.microsoft.com/v1.0/applications/$APPS_FIRST_OBJECTID -d '{
+    "displayName": "'$APPS_FIRST_DISPLAYNAME'-UPDATED"
 }'
 
 # Create a new app (this should succeed).

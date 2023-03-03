@@ -26,10 +26,46 @@ az rest -m POST -u https://graph.microsoft.com/v1.0/servicePrincipals/$WORKLOAD_
     "appRoleId": "'$GRAPH_APPROLEID'"
 }'
 
-# Make the Workload Identity an owner of the target app's service principal, so it can grant admin consent
-# to the app role for other apps, without the Workload Identity being a directory admin itself.
-az rest -m POST -u https://graph.microsoft.com/v1.0/servicePrincipals/$TARGET_SP_OBJECTID/owners/\$ref -b '{
-    "@odata.id": "https://graph.microsoft.com/v1.0/directoryObjects/'$WORKLOAD_SP_OBJECTID'"
+# Create an app consent policy describing the permissions that the Workload Identity
+# will be able to grant the admin consent to for other apps.
+# See https://learn.microsoft.com/azure/active-directory/manage-apps/manage-app-consent-policies?pivots=ms-graph.
+APPCONSENTPOLICY_ID="$PREFIX"AppConsentPolicy
+az rest -m POST -u https://graph.microsoft.com/v1.0/policies/permissionGrantPolicies -b '{
+    "id": "'$APPCONSENTPOLICY_ID'",
+    "displayName": "Allows admin consent to be granted for the Expenses.ReadWrite.All app role."
+}'
+
+# Include the permission to grant the "Expenses.ReadWrite.All" app role on the target app.
+az rest -m POST -u https://graph.microsoft.com/v1.0/policies/permissionGrantPolicies/$APPCONSENTPOLICY_ID/includes -b '{
+    "permissionType": "application",
+    "resourceApplication": "'$TARGET_APPID'",
+    "permissions": [
+        "'$TARGET_APP_APPROLEID'"
+    ]
+}'
+
+# Create a custom directory role which includes the permission to grant admin consent, subject to the app consent policy.
+# See https://learn.microsoft.com/azure/active-directory/roles/custom-create#create-a-role-with-the-microsoft-graph-api.
+DIRECTORYROLE=$(az rest -m POST -u https://graph.microsoft.com/v1.0/roleManagement/directory/roleDefinitions -b '{
+    "displayName": "Expense Permission Administrator",
+    "description": "Allows the user to grant admin consent for applications accessing the Expense app.",
+    "isEnabled": true,
+    "rolePermissions": [
+        {
+            "allowedResourceActions": [
+                "microsoft.directory/servicePrincipals/managePermissionGrantsForAll.'$APPCONSENTPOLICY_ID'"
+            ]
+        }
+    ]
+}')
+DIRECTORYROLE_ID=$(echo $DIRECTORYROLE | jq -r .id)
+
+# Assign the custom directory role to the Workload Identity.
+# See https://learn.microsoft.com/azure/active-directory/roles/custom-assign-graph.
+az rest -m POST -u https://graph.microsoft.com/v1.0/roleManagement/directory/roleAssignments -b '{
+    "principalId": "'$WORKLOAD_SP_OBJECTID'",
+    "roleDefinitionId": "'$DIRECTORYROLE_ID'",
+    "directoryScopeId": "/"
 }'
 
 #################### WORKLOAD IDENTITY ####################
@@ -60,7 +96,8 @@ SOURCE_SP_OBJECTID=$(echo $SOURCE_SP | jq -r .id)
 echo "Source Service Principal created: Object ID '$SOURCE_SP_OBJECTID'."
 
 # Grant the new app the "Expenses.ReadWrite.All" app role on the service principal of the target app,
-# using the Workload Identity's ownership on the target app to satisfy the admin consent.
+# using the Workload Identity's custom directory role which includes the app consent policy allowing it
+# to perform the admin consent.
 curl -s -X POST -H "Authorization: Bearer $WORKLOAD_TOKEN" -H "Content-Type: application/json" https://graph.microsoft.com/v1.0/servicePrincipals/$SOURCE_SP_OBJECTID/appRoleAssignments -d '{
     "principalId": "'$SOURCE_SP_OBJECTID'",
     "resourceId": "'$TARGET_SP_OBJECTID'",
@@ -85,6 +122,12 @@ echo "Source app roles: $SOURCE_TOKEN_APPROLES"
 curl -s -X DELETE -H "Authorization: Bearer $WORKLOAD_TOKEN" https://graph.microsoft.com/v1.0/applications/$SOURCE_APP_OBJECTID
 
 #################### ADMINISTRATOR ####################
+
+# Remove the custom directory role.
+az rest -m DELETE -u https://graph.microsoft.com/v1.0/roleManagement/directory/roleDefinitions/$DIRECTORYROLE_ID
+
+# Remove the app consent policy.
+az rest -m DELETE -u https://graph.microsoft.com/v1.0/policies/permissionGrantPolicies/"$PREFIX"AppConsentPolicy
 
 # Remove the target app.
 az ad app delete --id $TARGET_APPID

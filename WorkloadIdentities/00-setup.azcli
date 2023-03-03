@@ -17,6 +17,6 @@ WORKLOAD_SP_OBJECTID=$(az ad sp list --filter "appId eq '$WORKLOAD_APPID'" --que
 WORKLOAD_SP_PASSWORD=$(echo $WORKLOAD_SP | jq -r .password)
 echo "Workload Identity Service Principal created: App ID '$WORKLOAD_APPID', Object ID '$WORKLOAD_SP_OBJECTID'."
 
-# Look up the object ID of the Service Principal representing the Microsoft Graph API in the current tenant.
+# Look up the object ID of the Workload Identity representing the Microsoft Graph API in the current tenant.
 GRAPH_APPID=00000003-0000-0000-c000-000000000000
 GRAPH_SP_OBJECTID=$(az ad sp list --filter "appId eq '$GRAPH_APPID'" --query "[0].id" -o tsv)

@@ -1,7 +1,7 @@
 #################### ADMINISTRATOR ####################
 
-# If the service principal was logged in to the Azure CLI, login interactively again.
+# If the Workload Identity was logged in to the Azure CLI, login interactively again.
 az login --tenant $TENANT_ID
 
-# Delete the service principal.
+# Delete the Workload Identity.
 az ad app delete --id $WORKLOAD_APPID

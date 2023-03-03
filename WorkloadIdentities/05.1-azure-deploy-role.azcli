@@ -1,0 +1,31 @@
+#################### ADMINISTRATOR ####################
+
+# Create a resource group to allow the Workload Identity to deploy into.
+RESOURCEGROUP_NAME="$PREFIX"ResourceGroup
+REGION="westeurope"
+az group create --name $RESOURCEGROUP_NAME --location $REGION
+
+# Add the Workload Identity as a Contributor to the resource group.
+az role assignment create --assignee $WORKLOAD_SP_OBJECTID --role Contributor --resource-group $RESOURCEGROUP_NAME
+
+#################### WORKLOAD IDENTITY ####################
+
+# Log in to the Azure CLI as the Workload Identity.
+az login --service-principal --username $WORKLOAD_APPID --password $WORKLOAD_SP_PASSWORD --tenant $TENANT_ID
+
+# Create a Storage Account using the Contributor permissions on the resource group.
+STORAGEACCOUNT_NAME="$PREFIX"storage"$RANDOM"
+STORAGEACCOUNT_NAME=${STORAGEACCOUNT_NAME,,} # Convert to lowercase.
+STORAGEACCOUNT_NAME=${STORAGEACCOUNT_NAME//[^[:alnum:]]/} # Remove any non-alphanumeric characters.
+az storage account create --name $STORAGEACCOUNT_NAME --resource-group $RESOURCEGROUP_NAME --sku Standard_LRS
+
+# Delete the Storage Account.
+az storage account delete --name $STORAGEACCOUNT_NAME --resource-group $RESOURCEGROUP_NAME --yes
+
+#################### ADMINISTRATOR ####################
+
+# Since the Workload Identity was logged in to the Azure CLI, login interactively again.
+az login --tenant $TENANT_ID
+
+# Delete the resource group.
+az group delete --name $RESOURCEGROUP_NAME --yes

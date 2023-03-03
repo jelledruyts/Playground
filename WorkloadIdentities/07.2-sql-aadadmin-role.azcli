@@ -8,9 +8,6 @@ az group create --name $RESOURCEGROUP_NAME --location $REGION
 # Add the Workload Identity as a Contributor to the resource group so it can deploy resources.
 az role assignment create --assignee-object-id $WORKLOAD_SP_OBJECTID --assignee-principal-type ServicePrincipal --role Contributor --resource-group $RESOURCEGROUP_NAME
 
-# Grant the Workload Identity the User Access Administrator role so it can assign permissions within the resource group.
-az role assignment create --assignee-object-id $WORKLOAD_SP_OBJECTID --assignee-principal-type ServicePrincipal --role "User Access Administrator" --resource-group $RESOURCEGROUP_NAME
-
 #################### WORKLOAD IDENTITY ####################
 
 # Log in to the Azure CLI as the Workload Identity.

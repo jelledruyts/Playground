@@ -23,6 +23,7 @@ GRAPH_SP_OBJECTID=$(az ad sp list --filter "appId eq '$GRAPH_APPID'" --query "[0
 
 # Grant the Workload Identity the "Application.ReadWrite.OwnedBy" application permission on Microsoft Graph
 # so that it can create new apps.
+# See https://learn.microsoft.com/graph/permissions-reference?view=graph-rest-1.0#all-permissions-and-ids.
 GRAPH_APPROLEID=18a4783c-866b-4cc7-a460-3d5e5662c884
 az rest -m POST -u https://graph.microsoft.com/v1.0/servicePrincipals/$WORKLOAD_SP_OBJECTID/appRoleAssignments -b '{
     "principalId": "'$WORKLOAD_SP_OBJECTID'",

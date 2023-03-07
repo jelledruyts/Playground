@@ -7,6 +7,20 @@ RESOURCEGROUP_ID=$(echo $RESOURCEGROUP | jq -r .id)
 # Add the Workload Identity as a Contributor to the resource group so it can deploy resources.
 az role assignment create --assignee-object-id $WORKLOAD_SP_OBJECTID --assignee-principal-type ServicePrincipal --role Contributor --scope $RESOURCEGROUP_ID
 
+# Look up the object ID of the service principal representing the Microsoft Graph API in the current tenant.
+GRAPH_APPID=00000003-0000-0000-c000-000000000000
+GRAPH_SP_OBJECTID=$(az ad sp list --filter "appId eq '$GRAPH_APPID'" --query "[0].id" -o tsv)
+
+# Grant the Workload Identity the "Application.ReadWrite.OwnedBy" application permission on Microsoft Graph
+# so that it can make changes to the SQL server identity's app role assignments.
+# See https://learn.microsoft.com/graph/permissions-reference?view=graph-rest-1.0#all-permissions-and-ids.
+GRAPH_APPROLEID=18a4783c-866b-4cc7-a460-3d5e5662c884
+az rest -m POST -u https://graph.microsoft.com/v1.0/servicePrincipals/$WORKLOAD_SP_OBJECTID/appRoleAssignments -b '{
+    "principalId": "'$WORKLOAD_SP_OBJECTID'",
+    "resourceId": "'$GRAPH_SP_OBJECTID'",
+    "appRoleId": "'$GRAPH_APPROLEID'"
+}'
+
 # Create a regular security group which will be used as the Azure AD admin group for the SQL server.
 SQLADMINGROUP=$(az rest -m POST -u https://graph.microsoft.com/v1.0/groups -b '{
     "displayName": "'$PREFIX'AzureSQLAdmins",
@@ -18,30 +32,51 @@ SQLADMINGROUP=$(az rest -m POST -u https://graph.microsoft.com/v1.0/groups -b '{
 SQLADMINGROUP_ID=$(echo $SQLADMINGROUP | jq -r .id)
 SQLADMINGROUP_DISPLAYNAME=$(echo $SQLADMINGROUP | jq -r .displayName)
 
-# Create a role-assignable group with the Workload Identity as an Owner of the group
-# so that it can add the managed identity of the SQL server to it, thereby granting the
-# server identity permissions to read from the directory and validate the database user
-# when it is created for the managed identity of the web app.
-# See https://learn.microsoft.com/azure/active-directory/roles/groups-create-eligible#microsoft-graph-api.
-ROLEASSIGNABLEGROUP=$(az rest -m POST -u https://graph.microsoft.com/v1.0/groups -b '{
-    "displayName": "'$PREFIX'DirectoryReaders",
-    "mailNickname": "'$PREFIX'directory-readers",
-    "isAssignableToRole": true,
-    "mailEnabled": false,
-    "securityEnabled": true,
-    "visibility": "Private",
-    "owners@odata.bind": [
-        "https://graph.microsoft.com/v1.0/serviceprincipals/'$WORKLOAD_SP_OBJECTID'"
+# Create an app consent policy describing the permissions that the Workload Identity
+# will be able to grant the admin consent to for the SQL server identity.
+# See https://learn.microsoft.com/azure/active-directory/manage-apps/manage-app-consent-policies?pivots=ms-graph.
+APPCONSENTPOLICY_ID="$PREFIX"AppConsentPolicy-SqlGraphPermissions
+az rest -m POST -u https://graph.microsoft.com/v1.0/policies/permissionGrantPolicies -b '{
+    "id": "'$APPCONSENTPOLICY_ID'",
+    "displayName": "Allows admin consent to be granted for the Graph permissions required for the managed identity of SQL server."
+}'
+
+# Include the permission to grant the required "User.Read.All", "GroupMember.Read.All" and "Application.Read.All" Graph permissions.
+# See https://learn.microsoft.com/graph/permissions-reference?view=graph-rest-1.0#all-permissions-and-ids.
+GRAPH_APPROLEID_USERREADALL=df021288-bdef-4463-88db-98f22de89214
+GRAPH_APPROLEID_GROUPMEMBERREADALL=98830695-27a2-44f7-8c18-0c3ebc9698f6
+GRAPH_APPROLEID_APPLICATIONREADALL=9a5d68dd-52b0-4cc2-bd40-abcf44ac3a30
+az rest -m POST -u https://graph.microsoft.com/v1.0/policies/permissionGrantPolicies/$APPCONSENTPOLICY_ID/includes -b '{
+    "permissionType": "application",
+    "resourceApplication": "'$GRAPH_APPID'",
+    "permissions": [
+        "'$GRAPH_APPROLEID_USERREADALL'",
+        "'$GRAPH_APPROLEID_GROUPMEMBERREADALL'",
+        "'$GRAPH_APPROLEID_APPLICATIONREADALL'"
+    ]
+}'
+
+# Create a custom directory role which includes the permission to grant admin consent, subject to the app consent policy.
+# See https://learn.microsoft.com/azure/active-directory/roles/custom-create#create-a-role-with-the-microsoft-graph-api.
+DIRECTORYROLE=$(az rest -m POST -u https://graph.microsoft.com/v1.0/roleManagement/directory/roleDefinitions -b '{
+    "displayName": "SQL Server Identity Permission Administrator",
+    "description": "Allows the user to grant admin consent for the Graph permissions required for the managed identity of SQL server.",
+    "isEnabled": true,
+    "rolePermissions": [
+        {
+            "allowedResourceActions": [
+                "microsoft.directory/servicePrincipals/managePermissionGrantsForAll.'$APPCONSENTPOLICY_ID'"
+            ]
+        }
     ]
 }')
-ROLEASSIGNABLEGROUP_ID=$(echo $ROLEASSIGNABLEGROUP | jq -r .id)
+DIRECTORYROLE_ID=$(echo $DIRECTORYROLE | jq -r .id)
 
-# Assign the "Directory Readers" role to the group.
-# See https://learn.microsoft.com/azure/active-directory/roles/groups-assign-role#microsoft-graph-api
-DIRECTORY_ROLEID=88d8e3e3-8f55-4a1e-953a-9b9898b8876b
+# Assign the custom directory role to the Workload Identity.
+# See https://learn.microsoft.com/azure/active-directory/roles/custom-assign-graph.
 az rest -m POST -u https://graph.microsoft.com/v1.0/roleManagement/directory/roleAssignments -b '{
-    "principalId": "'$ROLEASSIGNABLEGROUP_ID'",
-    "roleDefinitionId": "'$DIRECTORY_ROLEID'",
+    "principalId": "'$WORKLOAD_SP_OBJECTID'",
+    "roleDefinitionId": "'$DIRECTORYROLE_ID'",
     "directoryScopeId": "/"
 }'
 
@@ -67,11 +102,22 @@ SQLSERVER=$(az sql server create --name $SQLSERVER_NAME --resource-group $RESOUR
 SQLSERVER_ID=$(echo $SQLSERVER | jq -r .id)
 SQLSERVER_SP_OBJECTID=$(echo $SQLSERVER | jq -r '.identity.principalId')
 
-# Assign the managed identity of the SQL server to the Directory Readers role-assignable group
-# using the Owner permission of the group and requiring no other directory permissions.
-# See https://learn.microsoft.com/azure/azure-sql/database/authentication-aad-directory-readers-role?view=azuresql
-az rest -m POST -u https://graph.microsoft.com/v1.0/groups/$ROLEASSIGNABLEGROUP_ID/members/\$ref -b '{
-    "@odata.id": "https://graph.microsoft.com/v1.0/serviceprincipals/'$SQLSERVER_SP_OBJECTID'"
+# Grant the managed identity of the SQL server the required "User.Read.All", "GroupMember.Read.All" and "Application.Read.All" Graph permissions,
+# using the Workload Identity's custom directory role which includes the app consent policy allowing it to perform the admin consent.
+az rest -m POST -u https://graph.microsoft.com/v1.0/servicePrincipals/$SQLSERVER_SP_OBJECTID/appRoleAssignments -b '{
+    "principalId": "'$SQLSERVER_SP_OBJECTID'",
+    "resourceId": "'$GRAPH_SP_OBJECTID'",
+    "appRoleId": "'$GRAPH_APPROLEID_USERREADALL'"
+}'
+az rest -m POST -u https://graph.microsoft.com/v1.0/servicePrincipals/$SQLSERVER_SP_OBJECTID/appRoleAssignments -b '{
+    "principalId": "'$SQLSERVER_SP_OBJECTID'",
+    "resourceId": "'$GRAPH_SP_OBJECTID'",
+    "appRoleId": "'$GRAPH_APPROLEID_GROUPMEMBERREADALL'"
+}'
+az rest -m POST -u https://graph.microsoft.com/v1.0/servicePrincipals/$SQLSERVER_SP_OBJECTID/appRoleAssignments -b '{
+    "principalId": "'$SQLSERVER_SP_OBJECTID'",
+    "resourceId": "'$GRAPH_SP_OBJECTID'",
+    "appRoleId": "'$GRAPH_APPROLEID_APPLICATIONREADALL'"
 }'
 
 # Open the SQL Firewall to allow the local IP and any Azure-based IP address to connect to the database.
@@ -118,8 +164,13 @@ az sql server delete --name $SQLSERVER_NAME --resource-group $RESOURCEGROUP_NAME
 # Since the Workload Identity was logged in to the Azure CLI, login interactively again.
 az login --tenant $TENANT_ID
 
-# Remove the Azure AD groups.
-az ad group delete --group $ROLEASSIGNABLEGROUP_ID
+# Remove the custom directory role.
+az rest -m DELETE -u https://graph.microsoft.com/v1.0/roleManagement/directory/roleDefinitions/$DIRECTORYROLE_ID
+
+# Remove the app consent policy.
+az rest -m DELETE -u https://graph.microsoft.com/v1.0/policies/permissionGrantPolicies/$APPCONSENTPOLICY_ID
+
+# Remove the security group.
 az ad group delete --group $SQLADMINGROUP_ID
 
 # Remove the resource group.

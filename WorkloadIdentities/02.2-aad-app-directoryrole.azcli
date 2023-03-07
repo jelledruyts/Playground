@@ -52,3 +52,8 @@ curl -s -X PATCH -H "Authorization: Bearer $WORKLOAD_TOKEN" -H "Content-Type: ap
 
 # Remove the new app.
 curl -s -X DELETE -H "Authorization: Bearer $WORKLOAD_TOKEN" https://graph.microsoft.com/v1.0/applications/$OWNED_APP_OBJECTID
+
+#################### ADMINISTRATOR ####################
+
+# Remove the Workload Identity.
+az ad app delete --id $WORKLOAD_APPID

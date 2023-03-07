@@ -55,7 +55,7 @@ SOURCE_SP_OBJECTID=$(echo $SOURCE_SP | jq -r .id)
 echo "Source Service Principal created: Object ID '$SOURCE_SP_OBJECTID'."
 
 # Grant the new app the "Expenses.ReadWrite.All" app role on the service principal of the target app,
-# using the Workload Identity's custom directory role which includes the app consent policy allowing it
+# using the Workload Identity's "Cloud Application Administrator" directory role allowing it
 # to perform the admin consent.
 curl -s -X POST -H "Authorization: Bearer $WORKLOAD_TOKEN" -H "Content-Type: application/json" https://graph.microsoft.com/v1.0/servicePrincipals/$SOURCE_SP_OBJECTID/appRoleAssignments -d '{
     "principalId": "'$SOURCE_SP_OBJECTID'",
@@ -84,3 +84,6 @@ curl -s -X DELETE -H "Authorization: Bearer $WORKLOAD_TOKEN" https://graph.micro
 
 # Remove the target app.
 az ad app delete --id $TARGET_APPID
+
+# Remove the Workload Identity.
+az ad app delete --id $WORKLOAD_APPID

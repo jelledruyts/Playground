@@ -1,28 +1,11 @@
 #################### ADMINISTRATOR ####################
 
 # Create a resource group to allow the Workload Identity to deploy into.
-RESOURCEGROUP_NAME="$PREFIX"ResourceGroup
-REGION="westeurope"
-az group create --name $RESOURCEGROUP_NAME --location $REGION
+RESOURCEGROUP=$(az group create --name $RESOURCEGROUP_NAME --location $REGION)
+RESOURCEGROUP_ID=$(echo $RESOURCEGROUP | jq -r .id)
 
 # Add the Workload Identity as a Contributor to the resource group so it can deploy resources.
-az role assignment create --assignee-object-id $WORKLOAD_SP_OBJECTID --assignee-principal-type ServicePrincipal --role Contributor --resource-group $RESOURCEGROUP_NAME
-
-# Create a security group with the Workload Identity as an Owner of the group
-# so that it can add members to the group without requiring a high privileged
-# Azure AD directory role or Microsoft Graph permission.
-GROUP=$(az rest -m POST -u https://graph.microsoft.com/v1.0/groups -b '{
-    "displayName": "'$PREFIX'AzureSQLAdmins",
-    "mailNickname": "'$PREFIX'azure-sql-admins",
-    "mailEnabled": false,
-    "securityEnabled": true,
-    "visibility": "Private",
-    "owners@odata.bind": [
-        "https://graph.microsoft.com/v1.0/serviceprincipals/'$WORKLOAD_SP_OBJECTID'"
-    ]
-}')
-GROUP_ID=$(echo $GROUP | jq -r .id)
-GROUP_DISPLAYNAME=$(echo $GROUP | jq -r .displayName)
+az role assignment create --assignee-object-id $WORKLOAD_SP_OBJECTID --assignee-principal-type ServicePrincipal --role Contributor --scope $RESOURCEGROUP_ID
 
 #################### WORKLOAD IDENTITY ####################
 
@@ -36,24 +19,32 @@ az appservice plan create --name $WEBPLAN_NAME --resource-group $RESOURCEGROUP_N
 WEBAPP=$(az webapp create --name $WEBAPP_NAME --resource-group $RESOURCEGROUP_NAME --plan $WEBPLAN_NAME --assign-identity --deployment-container-image-name https://ghcr.io/jelledruyts/inspectorgadget --https-only true)
 WEBAPP_SP_OBJECTID=$(echo $WEBAPP | jq -r '.identity.principalId')
 
-# Add the web app's managed identity to the security group.
-az ad group member add --group $GROUP_ID --member-id $WEBAPP_SP_OBJECTID
-
-# Create a SQL Database.
+# Create a SQL server.
 SQLSERVER_NAME="$PREFIX"Sql-Server"$RANDOM"
 SQLDATABASE_NAME="$PREFIX"Sql-Database"$RANDOM"
-az sql server create --name $SQLSERVER_NAME --resource-group $RESOURCEGROUP_NAME --enable-ad-only-auth --external-admin-principal-type Group --external-admin-name $GROUP_DISPLAYNAME --external-admin-sid $GROUP_ID
+SQLDATABASE_CONNECTIONSTRING="Server=tcp:$SQLSERVER_NAME.database.windows.net,1433;Database=$SQLDATABASE_NAME;"
+az sql server create --name $SQLSERVER_NAME --resource-group $RESOURCEGROUP_NAME --enable-ad-only-auth --external-admin-principal-type Application --external-admin-name $WEBAPP_NAME --external-admin-sid $WEBAPP_SP_OBJECTID
+
+# Open the SQL Firewall to allow any Azure-based IP address to connect to the database.
+# NOTE: in production, this should be much more restrictive.
 az sql server firewall-rule create --name AllowAllAzureIps --resource-group $RESOURCEGROUP_NAME --server $SQLSERVER_NAME --start-ip-address 0.0.0.0 --end-ip-address 0.0.0.0
+
+# Create the SQL Database.
 az sql db create --name $SQLDATABASE_NAME --resource-group $RESOURCEGROUP_NAME --server $SQLSERVER_NAME --tier GeneralPurpose --family Gen5 --capacity 2 --compute-model Serverless --auto-pause-delay 120
 
 # Configure the web app to connect to the database.
-az webapp config appsettings set --name $WEBAPP_NAME --resource-group $RESOURCEGROUP_NAME --settings "DefaultSqlConnectionSqlConnectionStringSuffix=Server=tcp:$SQLSERVER_NAME.database.windows.net,1433;Initial Catalog=$SQLDATABASE_NAME;" "DefaultSqlConnectionUseAzureManagedIdentity=true" "InfoMessage=Go to the SQL page to connect to the database!"
+az webapp config appsettings set --name $WEBAPP_NAME --resource-group $RESOURCEGROUP_NAME --settings "DefaultSqlConnectionSqlConnectionStringSuffix=$SQLDATABASE_CONNECTIONSTRING" "DefaultSqlConnectionUseAzureManagedIdentity=true" "InfoMessage=Go to the SQL page to connect to the database!"
 
 # Navigate to the web app to test the connection to the database.
 az webapp browse --name $WEBAPP_NAME --resource-group $RESOURCEGROUP_NAME
 
-# Remove the web app's managed identity from the security group.
-az ad group member remove --group $GROUP_ID --member-id $WEBAPP_SP_OBJECTID
+# Alternatively, call the Web API to test the connection to the database directly.
+curl -s -X POST -H "Content-Type: application/json" https://$WEBAPP_NAME.azurewebsites.net/api/sqlconnection -d '{
+    "databaseType": "SqlServer",
+    "sqlConnectionString": "'$SQLDATABASE_CONNECTIONSTRING'",
+    "sqlQuery": "SELECT USER_NAME()",
+    "useAzureManagedIdentity": true
+}'
 
 # Remove the App Service web app.
 az webapp delete --name $WEBAPP_NAME --resource-group $RESOURCEGROUP_NAME
@@ -69,5 +60,5 @@ az login --tenant $TENANT_ID
 # Remove the resource group.
 az group delete --name $RESOURCEGROUP_NAME --yes
 
-# Remove the security group.
-az ad group delete --group $GROUP_ID
+# Remove the Workload Identity.
+az ad app delete --id $WORKLOAD_APPID

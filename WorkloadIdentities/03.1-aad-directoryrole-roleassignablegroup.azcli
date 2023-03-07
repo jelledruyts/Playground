@@ -2,8 +2,8 @@
 
 # Create a role-assignable group with the Workload Identity as an Owner of the group.
 # See https://learn.microsoft.com/azure/active-directory/roles/groups-create-eligible#microsoft-graph-api.
-GROUP=$(az rest -m POST -u https://graph.microsoft.com/v1.0/groups -b '{
-    "displayName": "'$PREFIX'Directory Readers",
+ROLEASSIGNABLEGROUP=$(az rest -m POST -u https://graph.microsoft.com/v1.0/groups -b '{
+    "displayName": "'$PREFIX'DirectoryReaders",
     "mailNickname": "'$PREFIX'directory-readers",
     "isAssignableToRole": true,
     "mailEnabled": false,
@@ -13,24 +13,24 @@ GROUP=$(az rest -m POST -u https://graph.microsoft.com/v1.0/groups -b '{
         "https://graph.microsoft.com/v1.0/serviceprincipals/'$WORKLOAD_SP_OBJECTID'"
     ]
 }')
-GROUP_ID=$(echo $GROUP | jq -r .id)
+ROLEASSIGNABLEGROUP_ID=$(echo $ROLEASSIGNABLEGROUP | jq -r .id)
 
 # Assign the "Directory Readers" role to the group.
 # See https://learn.microsoft.com/azure/active-directory/roles/groups-assign-role#microsoft-graph-api
 DIRECTORY_ROLEID=88d8e3e3-8f55-4a1e-953a-9b9898b8876b
 az rest -m POST -u https://graph.microsoft.com/v1.0/roleManagement/directory/roleAssignments -b '{
-    "principalId": "'$GROUP_ID'",
+    "principalId": "'$ROLEASSIGNABLEGROUP_ID'",
     "roleDefinitionId": "'$DIRECTORY_ROLEID'",
     "directoryScopeId": "/"
 }'
 
 # Create another app that the workload identity can add to the role-assignable group,
 # and by doing that grant it the directory role through the group membership.
-GROUP_SP=$(az ad sp create-for-rbac --name "$PREFIX"App)
-GROUP_APPID=$(echo $GROUP_SP | jq -r .appId)
-GROUP_SP_OBJECTID=$(az ad sp list --filter "appId eq '$GROUP_APPID'" --query "[0].id" -o tsv)
-GROUP_SP_PASSWORD=$(echo $GROUP_SP | jq -r .password)
-echo "Group App Service Principal created: App ID '$GROUP_APPID', Object ID '$GROUP_SP_OBJECTID'."
+GROUPAPP_SP=$(az ad sp create-for-rbac --name "$PREFIX"App)
+GROUPAPP_APPID=$(echo $GROUPAPP_SP | jq -r .appId)
+GROUPAPP_SP_OBJECTID=$(az ad sp list --filter "appId eq '$GROUPAPP_APPID'" --query "[0].id" -o tsv)
+GROUPAPP_SP_PASSWORD=$(echo $GROUPAPP_SP | jq -r .password)
+echo "Group App Service Principal created: App ID '$GROUPAPP_APPID', Object ID '$GROUPAPP_SP_OBJECTID'."
 
 #################### WORKLOAD IDENTITY ####################
 
@@ -41,33 +41,36 @@ WORKLOAD_TOKEN=$(echo $WORKLOAD_AUTH | jq -r .access_token)
 # Call the Microsoft Graph API using the token and add the group app to the role-assignable group
 # using the Owner permission of the group and requiring no other directory permissions.
 # See https://learn.microsoft.com/graph/api/group-post-members?view=graph-rest-1.0&tabs=http.
-curl -s -X POST -H "Authorization: Bearer $WORKLOAD_TOKEN" -H "Content-Type: application/json" https://graph.microsoft.com/v1.0/groups/$GROUP_ID/members/\$ref -d '{
-    "@odata.id": "https://graph.microsoft.com/v1.0/serviceprincipals/'$GROUP_SP_OBJECTID'"
+curl -s -X POST -H "Authorization: Bearer $WORKLOAD_TOKEN" -H "Content-Type: application/json" https://graph.microsoft.com/v1.0/groups/$ROLEASSIGNABLEGROUP_ID/members/\$ref -d '{
+    "@odata.id": "https://graph.microsoft.com/v1.0/serviceprincipals/'$GROUPAPP_SP_OBJECTID'"
 }'
 
 #################### GROUP APP ####################
 
 # Use a client credentials flow to acquire a token from Azure AD for the group app, targeting the Microsoft Graph.
-GROUP_AUTH=$(curl -s -X POST -d "grant_type=client_credentials&client_id=$GROUP_APPID&client_secret=$GROUP_SP_PASSWORD&scope=https://graph.microsoft.com/.default" https://login.microsoftonline.com/$TENANT_ID/oauth2/v2.0/token)
-GROUP_TOKEN=$(echo $GROUP_AUTH | jq -r .access_token)
+GROUPAPP_AUTH=$(curl -s -X POST -d "grant_type=client_credentials&client_id=$GROUPAPP_APPID&client_secret=$GROUPAPP_SP_PASSWORD&scope=https://graph.microsoft.com/.default" https://login.microsoftonline.com/$TENANT_ID/oauth2/v2.0/token)
+GROUPAPP_TOKEN=$(echo $GROUPAPP_AUTH | jq -r .access_token)
 
 # For debugging purposes, show the directory roles contained in the access token as the "wids" claim.
-GROUP_TOKEN_PARTS=(${GROUP_TOKEN//./ })
-GROUP_TOKEN_DIRECTORYROLES=$(echo ${GROUP_TOKEN_PARTS[1]} | base64 -d | jq .wids)
-echo "Directory roles: $GROUP_TOKEN_DIRECTORYROLES"
+GROUPAPP_TOKEN_PARTS=(${GROUPAPP_TOKEN//./ })
+GROUPAPP_TOKEN_DIRECTORYROLES=$(echo ${GROUPAPP_TOKEN_PARTS[1]} | base64 -d | jq .wids)
+echo "Directory roles: $GROUPAPP_TOKEN_DIRECTORYROLES"
 
 # Call the Microsoft Graph API using the token and list all users using the "Directory Reader" role
 # granted through the role-assignable group membership.
-curl -s -X GET -H "Authorization: Bearer $GROUP_TOKEN" https://graph.microsoft.com/v1.0/users
+curl -s -X GET -H "Authorization: Bearer $GROUPAPP_TOKEN" https://graph.microsoft.com/v1.0/users
 
 #################### WORKLOAD IDENTITY ####################
 
 # Remove the app from the role-assignable group.
 # See https://learn.microsoft.com/graph/api/group-delete-members?view=graph-rest-1.0&tabs=http.
-curl -s -X DELETE -H "Authorization: Bearer $WORKLOAD_TOKEN" https://graph.microsoft.com/v1.0/groups/$GROUP_ID/members/$GROUP_SP_OBJECTID/\$ref
+curl -s -X DELETE -H "Authorization: Bearer $WORKLOAD_TOKEN" https://graph.microsoft.com/v1.0/groups/$ROLEASSIGNABLEGROUP_ID/members/$GROUPAPP_SP_OBJECTID/\$ref
 
 #################### ADMINISTRATOR ####################
 
 # Remove the group app and the role-assignable group.
-az ad app delete --id $GROUP_APPID
-az ad group delete --group $GROUP_ID
+az ad app delete --id $GROUPAPP_APPID
+az ad group delete --group $ROLEASSIGNABLEGROUP_ID
+
+# Remove the Workload Identity.
+az ad app delete --id $WORKLOAD_APPID

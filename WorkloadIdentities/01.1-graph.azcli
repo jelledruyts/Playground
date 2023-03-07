@@ -1,10 +1,13 @@
 #################### ADMINISTRATOR ####################
 
-# Grant the service principal the "Sites.Read.All" application permission on Microsoft Graph.
-# See https://learn.microsoft.com/graph/permissions-reference?view=graph-rest-1.0#all-permissions-and-ids.
-GRAPH_APPROLEID=332a536c-c7ef-4017-ab91-336970924f0d
+# Look up the object ID of the service principal representing the Microsoft Graph API in the current tenant.
+GRAPH_APPID=00000003-0000-0000-c000-000000000000
+GRAPH_SP_OBJECTID=$(az ad sp list --filter "appId eq '$GRAPH_APPID'" --query "[0].id" -o tsv)
 
+# Grant the Workload Identity the "Sites.Read.All" application permission on Microsoft Graph.
+# See https://learn.microsoft.com/graph/permissions-reference?view=graph-rest-1.0#all-permissions-and-ids.
 # Creating an app role assignment is the same as granting admin consent for that permission.
+GRAPH_APPROLEID=332a536c-c7ef-4017-ab91-336970924f0d
 az rest -m POST -u https://graph.microsoft.com/v1.0/servicePrincipals/$WORKLOAD_SP_OBJECTID/appRoleAssignments -b '{
     "principalId": "'$WORKLOAD_SP_OBJECTID'",
     "resourceId": "'$GRAPH_SP_OBJECTID'",
@@ -28,3 +31,11 @@ curl -s -X GET -H "Authorization: Bearer $WORKLOAD_TOKEN" https://graph.microsof
 # Alternatively, login as the service principal and call the Graph API using "az rest".
 az login --service-principal --username $WORKLOAD_APPID --password $WORKLOAD_SP_PASSWORD --tenant $TENANT_ID --allow-no-subscriptions
 az rest -m GET -u https://graph.microsoft.com/v1.0/sites
+
+#################### ADMINISTRATOR ####################
+
+# Since the Workload Identity was logged in to the Azure CLI, login interactively again.
+az login --tenant $TENANT_ID
+
+# Remove the Workload Identity.
+az ad app delete --id $WORKLOAD_APPID

@@ -1,5 +1,9 @@
 #################### ADMINISTRATOR ####################
 
+# Look up the object ID of the service principal representing the Microsoft Graph API in the current tenant.
+GRAPH_APPID=00000003-0000-0000-c000-000000000000
+GRAPH_SP_OBJECTID=$(az ad sp list --filter "appId eq '$GRAPH_APPID'" --query "[0].id" -o tsv)
+
 # Grant the Workload Identity the "Application.ReadWrite.OwnedBy" application permission on Microsoft Graph.
 # See https://learn.microsoft.com/graph/permissions-reference?view=graph-rest-1.0#all-permissions-and-ids.
 # Creating an app role assignment is the same as granting admin consent for that permission.
@@ -47,3 +51,8 @@ curl -s -X PATCH -H "Authorization: Bearer $WORKLOAD_TOKEN" -H "Content-Type: ap
 
 # Remove the new app.
 curl -s -X DELETE -H "Authorization: Bearer $WORKLOAD_TOKEN" https://graph.microsoft.com/v1.0/applications/$OWNED_APP_OBJECTID
+
+#################### ADMINISTRATOR ####################
+
+# Remove the Workload Identity.
+az ad app delete --id $WORKLOAD_APPID

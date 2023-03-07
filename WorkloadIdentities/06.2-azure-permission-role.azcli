@@ -1,15 +1,14 @@
 #################### ADMINISTRATOR ####################
 
 # Create a resource group to allow the Workload Identity to deploy into.
-RESOURCEGROUP_NAME="$PREFIX"ResourceGroup
-REGION="westeurope"
-az group create --name $RESOURCEGROUP_NAME --location $REGION
+RESOURCEGROUP=$(az group create --name $RESOURCEGROUP_NAME --location $REGION)
+RESOURCEGROUP_ID=$(echo $RESOURCEGROUP | jq -r .id)
 
 # Add the Workload Identity as a Contributor to the resource group so it can deploy resources.
-az role assignment create --assignee-object-id $WORKLOAD_SP_OBJECTID --assignee-principal-type ServicePrincipal --role Contributor --resource-group $RESOURCEGROUP_NAME
+az role assignment create --assignee-object-id $WORKLOAD_SP_OBJECTID --assignee-principal-type ServicePrincipal --role Contributor --scope $RESOURCEGROUP_ID
 
 # Grant the Workload Identity the User Access Administrator role so it can assign permissions within the resource group.
-az role assignment create --assignee-object-id $WORKLOAD_SP_OBJECTID --assignee-principal-type ServicePrincipal --role "User Access Administrator" --resource-group $RESOURCEGROUP_NAME
+az role assignment create --assignee-object-id $WORKLOAD_SP_OBJECTID --assignee-principal-type ServicePrincipal --role "User Access Administrator" --scope $RESOURCEGROUP_ID
 
 #################### WORKLOAD IDENTITY ####################
 
@@ -44,3 +43,6 @@ az login --tenant $TENANT_ID
 
 # Remove the resource group.
 az group delete --name $RESOURCEGROUP_NAME --yes
+
+# Remove the Workload Identity.
+az ad app delete --id $WORKLOAD_APPID

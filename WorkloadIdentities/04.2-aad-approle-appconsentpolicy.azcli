@@ -17,6 +17,10 @@ TARGET_SP=$(az ad sp create --id $TARGET_APPID)
 TARGET_SP_OBJECTID=$(echo $TARGET_SP | jq -r .id)
 echo "Target Service Principal created: Object ID '$TARGET_SP_OBJECTID'."
 
+# Look up the object ID of the service principal representing the Microsoft Graph API in the current tenant.
+GRAPH_APPID=00000003-0000-0000-c000-000000000000
+GRAPH_SP_OBJECTID=$(az ad sp list --filter "appId eq '$GRAPH_APPID'" --query "[0].id" -o tsv)
+
 # Grant the Workload Identity the "Application.ReadWrite.OwnedBy" application permission on Microsoft Graph
 # so that it can create new apps.
 GRAPH_APPROLEID=18a4783c-866b-4cc7-a460-3d5e5662c884
@@ -131,3 +135,6 @@ az rest -m DELETE -u https://graph.microsoft.com/v1.0/policies/permissionGrantPo
 
 # Remove the target app.
 az ad app delete --id $TARGET_APPID
+
+# Remove the Workload Identity.
+az ad app delete --id $WORKLOAD_APPID

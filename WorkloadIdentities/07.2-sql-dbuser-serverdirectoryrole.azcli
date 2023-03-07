@@ -1,0 +1,129 @@
+#################### ADMINISTRATOR ####################
+
+# Create a resource group to allow the Workload Identity to deploy into.
+RESOURCEGROUP=$(az group create --name $RESOURCEGROUP_NAME --location $REGION)
+RESOURCEGROUP_ID=$(echo $RESOURCEGROUP | jq -r .id)
+
+# Add the Workload Identity as a Contributor to the resource group so it can deploy resources.
+az role assignment create --assignee-object-id $WORKLOAD_SP_OBJECTID --assignee-principal-type ServicePrincipal --role Contributor --scope $RESOURCEGROUP_ID
+
+# Create a regular security group which will be used as the Azure AD admin group for the SQL server.
+SQLADMINGROUP=$(az rest -m POST -u https://graph.microsoft.com/v1.0/groups -b '{
+    "displayName": "'$PREFIX'AzureSQLAdmins",
+    "mailNickname": "'$PREFIX'azure-sql-admins",
+    "mailEnabled": false,
+    "securityEnabled": true,
+    "visibility": "Private"
+}')
+SQLADMINGROUP_ID=$(echo $SQLADMINGROUP | jq -r .id)
+SQLADMINGROUP_DISPLAYNAME=$(echo $SQLADMINGROUP | jq -r .displayName)
+
+# Create a role-assignable group with the Workload Identity as an Owner of the group
+# so that it can add the managed identity of the SQL server to it, thereby granting the
+# server identity permissions to read from the directory and validate the database user
+# when it is created for the managed identity of the web app.
+# See https://learn.microsoft.com/azure/active-directory/roles/groups-create-eligible#microsoft-graph-api.
+ROLEASSIGNABLEGROUP=$(az rest -m POST -u https://graph.microsoft.com/v1.0/groups -b '{
+    "displayName": "'$PREFIX'DirectoryReaders",
+    "mailNickname": "'$PREFIX'directory-readers",
+    "isAssignableToRole": true,
+    "mailEnabled": false,
+    "securityEnabled": true,
+    "visibility": "Private",
+    "owners@odata.bind": [
+        "https://graph.microsoft.com/v1.0/serviceprincipals/'$WORKLOAD_SP_OBJECTID'"
+    ]
+}')
+ROLEASSIGNABLEGROUP_ID=$(echo $ROLEASSIGNABLEGROUP | jq -r .id)
+
+# Assign the "Directory Readers" role to the group.
+# See https://learn.microsoft.com/azure/active-directory/roles/groups-assign-role#microsoft-graph-api
+DIRECTORY_ROLEID=88d8e3e3-8f55-4a1e-953a-9b9898b8876b
+az rest -m POST -u https://graph.microsoft.com/v1.0/roleManagement/directory/roleAssignments -b '{
+    "principalId": "'$ROLEASSIGNABLEGROUP_ID'",
+    "roleDefinitionId": "'$DIRECTORY_ROLEID'",
+    "directoryScopeId": "/"
+}'
+
+#################### WORKLOAD IDENTITY ####################
+
+# Log in to the Azure CLI as the Workload Identity.
+az login --service-principal --username $WORKLOAD_APPID --password $WORKLOAD_SP_PASSWORD --tenant $TENANT_ID
+
+# Create an App Service web app.
+WEBPLAN_NAME="$PREFIX"Web-Plan"$RANDOM"
+WEBAPP_NAME="$PREFIX"Web-App"$RANDOM"
+az appservice plan create --name $WEBPLAN_NAME --resource-group $RESOURCEGROUP_NAME --sku FREE --is-linux
+WEBAPP=$(az webapp create --name $WEBAPP_NAME --resource-group $RESOURCEGROUP_NAME --plan $WEBPLAN_NAME --assign-identity --deployment-container-image-name https://ghcr.io/jelledruyts/inspectorgadget --https-only true)
+
+# Create a SQL server.
+SQLSERVER_NAME="$PREFIX"Sql-Server"$RANDOM"
+SQLDATABASE_NAME="$PREFIX"Sql-Database"$RANDOM"
+SQLDATABASE_CONNECTIONSTRING="Server=tcp:$SQLSERVER_NAME.database.windows.net,1433;Database=$SQLDATABASE_NAME;"
+
+# At first, set the Workload Identity as the SQL AAD admin so that it can provision the users.
+WORKLOAD_SID=$(az account show --query user.name -o tsv)
+SQLSERVER=$(az sql server create --name $SQLSERVER_NAME --resource-group $RESOURCEGROUP_NAME --enable-ad-only-auth --external-admin-principal-type Application --external-admin-name $WORKLOAD_SID --external-admin-sid $WORKLOAD_SID --assign-identity --identity-type SystemAssigned)
+SQLSERVER_ID=$(echo $SQLSERVER | jq -r .id)
+SQLSERVER_SP_OBJECTID=$(echo $SQLSERVER | jq -r '.identity.principalId')
+
+# Assign the managed identity of the SQL server to the Directory Readers role-assignable group
+# using the Owner permission of the group and requiring no other directory permissions.
+# See https://learn.microsoft.com/azure/azure-sql/database/authentication-aad-directory-readers-role?view=azuresql
+az rest -m POST -u https://graph.microsoft.com/v1.0/groups/$ROLEASSIGNABLEGROUP_ID/members/\$ref -b '{
+    "@odata.id": "https://graph.microsoft.com/v1.0/serviceprincipals/'$SQLSERVER_SP_OBJECTID'"
+}'
+
+# Open the SQL Firewall to allow the local IP and any Azure-based IP address to connect to the database.
+# NOTE: in production, this should be much more restrictive.
+LOCAL_IP=$(curl -s https://api.ipify.org)
+az sql server firewall-rule create --name AllowLocalIP --resource-group $RESOURCEGROUP_NAME --server $SQLSERVER_NAME --start-ip-address $LOCAL_IP --end-ip-address $LOCAL_IP
+az sql server firewall-rule create --name AllowAllAzureIps --resource-group $RESOURCEGROUP_NAME --server $SQLSERVER_NAME --start-ip-address 0.0.0.0 --end-ip-address 0.0.0.0
+
+# Create the SQL Database.
+az sql db create --name $SQLDATABASE_NAME --resource-group $RESOURCEGROUP_NAME --server $SQLSERVER_NAME --tier GeneralPurpose --family Gen5 --capacity 2 --compute-model Serverless --auto-pause-delay 120
+
+# Get an access token for the SQL server on behalf of the Workload Identity.
+# See https://learn.microsoft.com/sql/connect/odbc/linux-mac/connecting-with-sqlcmd?view=azuresqldb-current.
+az account get-access-token --resource https://database.windows.net | jq -r '.accessToken' | tr -d '\n' | iconv -f ascii -t UTF-16LE > /tmp/token
+
+# Connect to the SQL server using the access token and create a user for the managed identity of the web app.
+/opt/mssql-tools/bin/sqlcmd -S $SQLSERVER_NAME.database.windows.net -d $SQLDATABASE_NAME -G -P /tmp/token -Q "CREATE USER [$WEBAPP_NAME] FROM EXTERNAL PROVIDER;"
+
+# After initial configuration, set the SQL AAD admin to a pre-existing group so that external admins can manage the SQL server.
+az sql server ad-admin update --ids $SQLSERVER_ID --display-name $SQLADMINGROUP_DISPLAYNAME --object-id $SQLADMINGROUP_ID
+
+# Configure the web app to connect to the database.
+az webapp config appsettings set --name $WEBAPP_NAME --resource-group $RESOURCEGROUP_NAME --settings "DefaultSqlConnectionSqlConnectionStringSuffix=$SQLDATABASE_CONNECTIONSTRING" "DefaultSqlConnectionUseAzureManagedIdentity=true" "InfoMessage=Go to the SQL page to connect to the database!"
+
+# Navigate to the web app to test the connection to the database.
+az webapp browse --name $WEBAPP_NAME --resource-group $RESOURCEGROUP_NAME
+
+# Alternatively, call the Web API to test the connection to the database directly.
+curl -s -X POST -H "Content-Type: application/json" https://$WEBAPP_NAME.azurewebsites.net/api/sqlconnection -d '{
+    "databaseType": "SqlServer",
+    "sqlConnectionString": "'$SQLDATABASE_CONNECTIONSTRING'",
+    "sqlQuery": "SELECT USER_NAME()",
+    "useAzureManagedIdentity": true
+}'
+
+# Remove the App Service web app.
+az webapp delete --name $WEBAPP_NAME --resource-group $RESOURCEGROUP_NAME
+
+# Remove the SQL Database.
+az sql server delete --name $SQLSERVER_NAME --resource-group $RESOURCEGROUP_NAME --yes
+
+#################### ADMINISTRATOR ####################
+
+# Since the Workload Identity was logged in to the Azure CLI, login interactively again.
+az login --tenant $TENANT_ID
+
+# Remove the Azure AD groups.
+az ad group delete --group $ROLEASSIGNABLEGROUP_ID
+az ad group delete --group $SQLADMINGROUP_ID
+
+# Remove the resource group.
+az group delete --name $RESOURCEGROUP_NAME --yes
+
+# Remove the Workload Identity.
+az ad app delete --id $WORKLOAD_APPID

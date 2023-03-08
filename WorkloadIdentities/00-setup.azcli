@@ -1,5 +1,5 @@
 # Prerequisites: Bash, Azure CLI, curl, jq (these are preinstalled on Azure Cloud Shell).
-# For SQL configuration: sqlcmd (https://learn.microsoft.com/sql/linux/sql-server-linux-setup-tools?view=sql-server-ver16&tabs=ubuntu-install%2Credhat-offline#install-tools-on-linux).
+# For SQL configuration: tr, iconv and sqlcmd (https://learn.microsoft.com/sql/linux/sql-server-linux-setup-tools?view=sql-server-ver16&tabs=ubuntu-install%2Credhat-offline#install-tools-on-linux).
 
 #################### ADMINISTRATOR ####################
 

@@ -1,7 +1,45 @@
+# IMPORTANT NOTE: this scenario uses a technique to provision the database user which is
+# explicitly undocumented and unsupported. Do not use this approach in production!
+# See https://github.com/MicrosoftDocs/sql-docs/issues/2323#issuecomment-719003520
+
+# In this scenario, the workload identity is granted "Application.Read.All" permissions in
+# Microsoft Graph so that it can look up the AppID of the web app's managed identity. The
+# workload sets itself as the Azure AD administrator of SQL server so that it can execute a
+# T-SQL statement to create the database user for the managed identity of a web app. To
+# avoid the need for Microsoft Graph permissions or Azure AD directory roles for the managed
+# identity of the SQL server, the workload directly inserts the database user by calculating
+# the database SID from the managed identity's App ID. As of then, the web app can connect
+# to the SQL database using its managed identity, which is mapped to its own specific
+# database user.
+
+#################### PREREQUISITES ####################
+
+# The commands below should be executed in bash with the following prerequisites installed
+# (note that these are all preinstalled on Azure Cloud Shell):
+# - Azure CLI (https://docs.microsoft.com/cli/azure/install-azure-cli)
+# - curl
+# - jq
+# - tr
+# - iconv
+# - sqlcmd (https://learn.microsoft.com/sql/linux/sql-server-linux-setup-tools?tabs=ubuntu-install%2Credhat-offline#install-tools-on-linux).
+
 #################### ADMINISTRATOR ####################
 
-# NOTE: This scenario uses a technique to provision the database user which is explicitly undocumented
-# and unsupported: https://github.com/MicrosoftDocs/sql-docs/issues/2323#issuecomment-719003520
+# Set configuration variables.
+TENANT_ID=MSDx413347.onmicrosoft.com
+PREFIX=WI-
+RESOURCEGROUP_NAME="$PREFIX"ResourceGroup
+REGION="westeurope"
+
+# Login interactively.
+az login --tenant $TENANT_ID
+
+# Create the Service Principal representing the Workload Identity.
+WORKLOAD_SP=$(az ad sp create-for-rbac --name "$PREFIX"WorkloadIdentity)
+WORKLOAD_APPID=$(echo $WORKLOAD_SP | jq -r .appId)
+WORKLOAD_SP_OBJECTID=$(az ad sp list --filter "appId eq '$WORKLOAD_APPID'" --query "[0].id" -o tsv)
+WORKLOAD_SP_PASSWORD=$(echo $WORKLOAD_SP | jq -r .password)
+echo "Workload Identity Service Principal created: App ID '$WORKLOAD_APPID', Object ID '$WORKLOAD_SP_OBJECTID'."
 
 # Create a resource group to allow the Workload Identity to deploy into.
 RESOURCEGROUP=$(az group create --name $RESOURCEGROUP_NAME --location $REGION)

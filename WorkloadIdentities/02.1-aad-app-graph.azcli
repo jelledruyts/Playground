@@ -1,4 +1,31 @@
+# In this scenario, the workload identity has been given Microsoft Graph permissions
+# to manage app registrations and service principals in Azure AD.
+
+#################### PREREQUISITES ####################
+
+# The commands below should be executed in bash with the following prerequisites installed
+# (note that these are all preinstalled on Azure Cloud Shell):
+# - Azure CLI (https://docs.microsoft.com/cli/azure/install-azure-cli)
+# - curl
+# - jq
+
 #################### ADMINISTRATOR ####################
+
+# Set configuration variables.
+TENANT_ID=MSDx413347.onmicrosoft.com
+PREFIX=WI-
+RESOURCEGROUP_NAME="$PREFIX"ResourceGroup
+REGION="westeurope"
+
+# Login interactively.
+az login --tenant $TENANT_ID
+
+# Create the Service Principal representing the Workload Identity.
+WORKLOAD_SP=$(az ad sp create-for-rbac --name "$PREFIX"WorkloadIdentity)
+WORKLOAD_APPID=$(echo $WORKLOAD_SP | jq -r .appId)
+WORKLOAD_SP_OBJECTID=$(az ad sp list --filter "appId eq '$WORKLOAD_APPID'" --query "[0].id" -o tsv)
+WORKLOAD_SP_PASSWORD=$(echo $WORKLOAD_SP | jq -r .password)
+echo "Workload Identity Service Principal created: App ID '$WORKLOAD_APPID', Object ID '$WORKLOAD_SP_OBJECTID'."
 
 # Look up the object ID of the service principal representing the Microsoft Graph API in the current tenant.
 GRAPH_APPID=00000003-0000-0000-c000-000000000000

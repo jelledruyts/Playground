@@ -15,8 +15,6 @@
 # Set configuration variables.
 TENANT_ID=MSDx413347.onmicrosoft.com
 PREFIX=WI-
-RESOURCEGROUP_NAME="$PREFIX"ResourceGroup
-REGION="westeurope"
 
 # Login interactively.
 az login --tenant $TENANT_ID

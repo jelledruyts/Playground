@@ -1,0 +1,153 @@
+# In this scenario, the workload identity is assigned a custom Azure AD directory role
+# which has an app consent policy attached so that it can grant the admin consent for
+# very specific Microsoft Graph application permissions.
+
+#################### PREREQUISITES ####################
+
+# The commands below should be executed in bash with the following prerequisites installed
+# (note that these are all preinstalled on Azure Cloud Shell):
+# - Azure CLI (https://docs.microsoft.com/cli/azure/install-azure-cli)
+# - curl
+# - jq
+
+#################### ADMINISTRATOR ####################
+
+# Set configuration variables.
+TENANT_ID=MSDx413347.onmicrosoft.com
+PREFIX=WI-
+
+# Login interactively.
+az login --tenant $TENANT_ID
+
+# Create the Service Principal representing the Workload Identity.
+WORKLOAD_SP=$(az ad sp create-for-rbac --name "$PREFIX"WorkloadIdentity)
+WORKLOAD_APPID=$(echo $WORKLOAD_SP | jq -r .appId)
+WORKLOAD_SP_OBJECTID=$(az ad sp list --filter "appId eq '$WORKLOAD_APPID'" --query "[0].id" -o tsv)
+WORKLOAD_SP_PASSWORD=$(echo $WORKLOAD_SP | jq -r .password)
+echo "Workload Identity Service Principal created: App ID '$WORKLOAD_APPID', Object ID '$WORKLOAD_SP_OBJECTID'."
+
+# Look up the object ID of the service principal representing the Microsoft Graph API in the current tenant.
+GRAPH_APPID=00000003-0000-0000-c000-000000000000
+GRAPH_SP_OBJECTID=$(az ad sp list --filter "appId eq '$GRAPH_APPID'" --query "[0].id" -o tsv)
+
+# Grant the Workload Identity the "Application.ReadWrite.OwnedBy" application permission on Microsoft Graph
+# so that it can create new apps.
+# See https://learn.microsoft.com/graph/permissions-reference?view=graph-rest-1.0#all-permissions-and-ids.
+GRAPH_APPROLEID=18a4783c-866b-4cc7-a460-3d5e5662c884
+az rest -m POST -u https://graph.microsoft.com/v1.0/servicePrincipals/$WORKLOAD_SP_OBJECTID/appRoleAssignments -b '{
+    "principalId": "'$WORKLOAD_SP_OBJECTID'",
+    "resourceId": "'$GRAPH_SP_OBJECTID'",
+    "appRoleId": "'$GRAPH_APPROLEID'"
+}'
+
+# Create an app consent policy describing the permissions that the Workload Identity
+# will be able to grant the admin consent to for other apps.
+# See https://learn.microsoft.com/azure/active-directory/manage-apps/manage-app-consent-policies?pivots=ms-graph.
+APPCONSENTPOLICY_ID="$PREFIX"AppConsentPolicy
+az rest -m POST -u https://graph.microsoft.com/v1.0/policies/permissionGrantPolicies -b '{
+    "id": "'$APPCONSENTPOLICY_ID'",
+    "displayName": "Allows admin consent to be granted for the Sites.Read.All application permission on Microsoft Graph."
+}'
+
+# Include the permission to grant the "Sites.Read.All" app role on the Microsoft Graph.
+TARGET_APPID=00000003-0000-0000-c000-000000000000 # Microsoft Graph app id
+TARGET_SP_OBJECTID=$(az ad sp list --filter "appId eq '$TARGET_APPID'" --query "[0].id" -o tsv) # Microsoft Graph service principal object id
+TARGET_APP_APPROLEID=332a536c-c7ef-4017-ab91-336970924f0d # "Sites.Read.All" application permission
+az rest -m POST -u https://graph.microsoft.com/v1.0/policies/permissionGrantPolicies/$APPCONSENTPOLICY_ID/includes -b '{
+    "permissionType": "application",
+    "resourceApplication": "'$TARGET_APPID'",
+    "permissions": [
+        "'$TARGET_APP_APPROLEID'"
+    ]
+}'
+
+# Create a custom directory role which includes the permission to grant admin consent, subject to the app consent policy.
+# See https://learn.microsoft.com/azure/active-directory/roles/custom-create#create-a-role-with-the-microsoft-graph-api.
+DIRECTORYROLE=$(az rest -m POST -u https://graph.microsoft.com/v1.0/roleManagement/directory/roleDefinitions -b '{
+    "displayName": "Graph Permission Administrator",
+    "description": "Allows the user to grant admin consent for applications requiring a specific set of permissions on the Microsoft Graph.",
+    "isEnabled": true,
+    "rolePermissions": [
+        {
+            "allowedResourceActions": [
+                "microsoft.directory/servicePrincipals/managePermissionGrantsForAll.'$APPCONSENTPOLICY_ID'"
+            ]
+        }
+    ]
+}')
+DIRECTORYROLE_ID=$(echo $DIRECTORYROLE | jq -r .id)
+
+# Assign the custom directory role to the Workload Identity.
+# See https://learn.microsoft.com/azure/active-directory/roles/custom-assign-graph.
+az rest -m POST -u https://graph.microsoft.com/v1.0/roleManagement/directory/roleAssignments -b '{
+    "principalId": "'$WORKLOAD_SP_OBJECTID'",
+    "roleDefinitionId": "'$DIRECTORYROLE_ID'",
+    "directoryScopeId": "/"
+}'
+
+#################### WORKLOAD IDENTITY ####################
+
+# Use a client credentials flow to acquire a token from Azure AD for the service principal, targeting the Microsoft Graph.
+WORKLOAD_AUTH=$(curl -s -X POST -d "grant_type=client_credentials&client_id=$WORKLOAD_APPID&client_secret=$WORKLOAD_SP_PASSWORD&scope=https://graph.microsoft.com/.default" https://login.microsoftonline.com/$TENANT_ID/oauth2/v2.0/token)
+WORKLOAD_TOKEN=$(echo $WORKLOAD_AUTH | jq -r .access_token)
+
+# Create a new app which will act as the calling app towards the target app and which requires the app role.
+SOURCE_APP=$(curl -s -X POST -H "Authorization: Bearer $WORKLOAD_TOKEN" -H "Content-Type: application/json" https://graph.microsoft.com/v1.0/applications -d '{
+    "displayName": "'$PREFIX'SourceApp"
+}')
+SOURCE_APPID=$(echo $SOURCE_APP | jq -r .appId)
+SOURCE_APP_OBJECTID=$(echo $SOURCE_APP | jq -r .id)
+SOURCE_APP_PASSWORDCREDENTIAL=$(curl -s -X POST -H "Authorization: Bearer $WORKLOAD_TOKEN" -H "Content-Type: application/json" https://graph.microsoft.com/v1.0/applications/$SOURCE_APP_OBJECTID/addPassword -d '{
+    "passwordCredential": {
+        "displayName": "'$PREFIX'SourceApp-Password"
+    }
+}')
+SOURCE_APP_PASSWORD=$(echo $SOURCE_APP_PASSWORDCREDENTIAL | jq -r .secretText)
+echo "Source App created: App ID '$SOURCE_APPID', Object ID '$SOURCE_APP_OBJECTID'."
+
+# Create the service principal for the source app.
+SOURCE_SP=$(curl -s -X POST -H "Authorization: Bearer $WORKLOAD_TOKEN" -H "Content-Type: application/json" https://graph.microsoft.com/v1.0/servicePrincipals -d '{
+    "appId": "'$SOURCE_APPID'"
+}')
+SOURCE_SP_OBJECTID=$(echo $SOURCE_SP | jq -r .id)
+echo "Source Service Principal created: Object ID '$SOURCE_SP_OBJECTID'."
+
+# Grant the new app the "Sites.Read.All" app role on the service principal of the Microsoft Graph,
+# using the Workload Identity's custom directory role which includes the app consent policy allowing it
+# to perform the admin consent.
+curl -s -X POST -H "Authorization: Bearer $WORKLOAD_TOKEN" -H "Content-Type: application/json" https://graph.microsoft.com/v1.0/servicePrincipals/$SOURCE_SP_OBJECTID/appRoleAssignments -d '{
+    "principalId": "'$SOURCE_SP_OBJECTID'",
+    "resourceId": "'$TARGET_SP_OBJECTID'",
+    "appRoleId": "'$TARGET_APP_APPROLEID'"
+}'
+
+#################### SOURCE APP ####################
+
+# Use a client credentials flow to acquire a token from Azure AD for the source app, targeting the Microsoft Graph.
+SOURCE_AUTH=$(curl -s -X POST -d "grant_type=client_credentials&client_id=$SOURCE_APPID&client_secret=$SOURCE_APP_PASSWORD&scope=$TARGET_APPID/.default" https://login.microsoftonline.com/$TENANT_ID/oauth2/v2.0/token)
+SOURCE_TOKEN=$(echo $SOURCE_AUTH | jq -r .access_token)
+
+# To demonstrate the source app has the "Expenses.ReadWrite.All" permission on the target app,
+# show the app roles contained in the access token as the "roles" claim.
+SOURCE_TOKEN_PARTS=(${SOURCE_TOKEN//./ })
+SOURCE_TOKEN_APPROLES=$(echo ${SOURCE_TOKEN_PARTS[1]} | base64 -d | jq .roles)
+echo "Source app roles: $SOURCE_TOKEN_APPROLES"
+
+# Call the Microsoft Graph API using the token and list all sites (using the granted "Sites.Read.All" permission).
+curl -s -X GET -H "Authorization: Bearer $SOURCE_TOKEN" https://graph.microsoft.com/v1.0/sites
+
+#################### WORKLOAD IDENTITY ####################
+
+# Remove the source app.
+curl -s -X DELETE -H "Authorization: Bearer $WORKLOAD_TOKEN" https://graph.microsoft.com/v1.0/applications/$SOURCE_APP_OBJECTID
+
+#################### ADMINISTRATOR ####################
+
+# Remove the custom directory role.
+az rest -m DELETE -u https://graph.microsoft.com/v1.0/roleManagement/directory/roleDefinitions/$DIRECTORYROLE_ID
+
+# Remove the app consent policy.
+az rest -m DELETE -u https://graph.microsoft.com/v1.0/policies/permissionGrantPolicies/$APPCONSENTPOLICY_ID
+
+# Remove the Workload Identity.
+az ad app delete --id $WORKLOAD_APPID

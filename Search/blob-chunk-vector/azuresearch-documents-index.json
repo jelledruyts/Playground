@@ -9,11 +9,7 @@
             "retrievable": true,
             "sortable": false,
             "facetable": false,
-            "key": true,
-            "indexAnalyzer": null,
-            "searchAnalyzer": null,
-            "analyzer": null,
-            "synonymMaps": []
+            "key": true
         },
         {
             "name": "content",
@@ -23,11 +19,7 @@
             "retrievable": true,
             "sortable": false,
             "facetable": false,
-            "key": false,
-            "indexAnalyzer": null,
-            "searchAnalyzer": null,
-            "analyzer": "en.microsoft",
-            "synonymMaps": []
+            "analyzer": "en.microsoft"
         },
         {
             "name": "metadata_storage_content_type",
@@ -36,12 +28,7 @@
             "filterable": true,
             "retrievable": true,
             "sortable": true,
-            "facetable": true,
-            "key": false,
-            "indexAnalyzer": null,
-            "searchAnalyzer": null,
-            "analyzer": null,
-            "synonymMaps": []
+            "facetable": true
         },
         {
             "name": "metadata_storage_size",
@@ -50,12 +37,7 @@
             "filterable": true,
             "retrievable": true,
             "sortable": true,
-            "facetable": true,
-            "key": false,
-            "indexAnalyzer": null,
-            "searchAnalyzer": null,
-            "analyzer": null,
-            "synonymMaps": []
+            "facetable": true
         },
         {
             "name": "metadata_storage_last_modified",
@@ -64,12 +46,7 @@
             "filterable": true,
             "retrievable": true,
             "sortable": true,
-            "facetable": true,
-            "key": false,
-            "indexAnalyzer": null,
-            "searchAnalyzer": null,
-            "analyzer": null,
-            "synonymMaps": []
+            "facetable": true
         },
         {
             "name": "metadata_storage_content_md5",
@@ -78,12 +55,7 @@
             "filterable": false,
             "retrievable": true,
             "sortable": false,
-            "facetable": false,
-            "key": false,
-            "indexAnalyzer": null,
-            "searchAnalyzer": null,
-            "analyzer": null,
-            "synonymMaps": []
+            "facetable": false
         },
         {
             "name": "metadata_storage_name",
@@ -93,11 +65,7 @@
             "retrievable": true,
             "sortable": true,
             "facetable": true,
-            "key": false,
-            "indexAnalyzer": null,
-            "searchAnalyzer": null,
-            "analyzer": "standard.lucene",
-            "synonymMaps": []
+            "analyzer": "standard.lucene"
         },
         {
             "name": "metadata_storage_path",
@@ -107,11 +75,7 @@
             "retrievable": true,
             "sortable": true,
             "facetable": false,
-            "key": false,
-            "indexAnalyzer": null,
-            "searchAnalyzer": null,
-            "analyzer": "standard.lucene",
-            "synonymMaps": []
+            "analyzer": "standard.lucene"
         },
         {
             "name": "metadata_content_type",
@@ -120,12 +84,7 @@
             "filterable": true,
             "retrievable": true,
             "sortable": true,
-            "facetable": true,
-            "key": false,
-            "indexAnalyzer": null,
-            "searchAnalyzer": null,
-            "analyzer": null,
-            "synonymMaps": []
+            "facetable": true
         },
         {
             "name": "metadata_character_count",
@@ -134,12 +93,7 @@
             "filterable": true,
             "retrievable": true,
             "sortable": true,
-            "facetable": true,
-            "key": false,
-            "indexAnalyzer": null,
-            "searchAnalyzer": null,
-            "analyzer": null,
-            "synonymMaps": []
+            "facetable": true
         },
         {
             "name": "metadata_creation_date",
@@ -148,12 +102,7 @@
             "filterable": true,
             "retrievable": true,
             "sortable": true,
-            "facetable": true,
-            "key": false,
-            "indexAnalyzer": null,
-            "searchAnalyzer": null,
-            "analyzer": null,
-            "synonymMaps": []
+            "facetable": true
         },
         {
             "name": "metadata_last_modified",
@@ -162,12 +111,7 @@
             "filterable": true,
             "retrievable": true,
             "sortable": true,
-            "facetable": true,
-            "key": false,
-            "indexAnalyzer": null,
-            "searchAnalyzer": null,
-            "analyzer": null,
-            "synonymMaps": []
+            "facetable": true
         },
         {
             "name": "metadata_page_count",
@@ -176,12 +120,7 @@
             "filterable": true,
             "retrievable": true,
             "sortable": true,
-            "facetable": true,
-            "key": false,
-            "indexAnalyzer": null,
-            "searchAnalyzer": null,
-            "analyzer": null,
-            "synonymMaps": []
+            "facetable": true
         },
         {
             "name": "metadata_word_count",
@@ -190,12 +129,7 @@
             "filterable": true,
             "retrievable": true,
             "sortable": true,
-            "facetable": true,
-            "key": false,
-            "indexAnalyzer": null,
-            "searchAnalyzer": null,
-            "analyzer": null,
-            "synonymMaps": []
+            "facetable": true
         }
     ],
     "semantic": {

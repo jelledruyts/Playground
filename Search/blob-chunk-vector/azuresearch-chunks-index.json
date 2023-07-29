@@ -9,11 +9,7 @@
             "retrievable": true,
             "sortable": true,
             "facetable": false,
-            "key": true,
-            "indexAnalyzer": null,
-            "searchAnalyzer": null,
-            "analyzer": null,
-            "synonymMaps": []
+            "key": true
         },
         {
             "name": "chunk_index",
@@ -22,12 +18,7 @@
             "filterable": true,
             "retrievable": true,
             "sortable": true,
-            "facetable": false,
-            "key": false,
-            "indexAnalyzer": null,
-            "searchAnalyzer": null,
-            "analyzer": null,
-            "synonymMaps": []
+            "facetable": false
         },
         {
             "name": "chunk_offset",
@@ -36,12 +27,7 @@
             "filterable": true,
             "retrievable": true,
             "sortable": true,
-            "facetable": false,
-            "key": false,
-            "indexAnalyzer": null,
-            "searchAnalyzer": null,
-            "analyzer": null,
-            "synonymMaps": []
+            "facetable": false
         },
         {
             "name": "chunk_length",
@@ -50,12 +36,7 @@
             "filterable": true,
             "retrievable": true,
             "sortable": true,
-            "facetable": false,
-            "key": false,
-            "indexAnalyzer": null,
-            "searchAnalyzer": null,
-            "analyzer": null,
-            "synonymMaps": []
+            "facetable": false
         },
         {
             "name": "content",
@@ -65,11 +46,7 @@
             "retrievable": true,
             "sortable": false,
             "facetable": false,
-            "key": false,
-            "indexAnalyzer": null,
-            "searchAnalyzer": null,
-            "analyzer": "en.microsoft",
-            "synonymMaps": []
+            "analyzer": "en.microsoft"
         },
         {
             "name": "content_vector",
@@ -80,12 +57,7 @@
             "filterable": false,
             "retrievable": true,
             "sortable": false,
-            "facetable": false,
-            "key": false,
-            "indexAnalyzer": null,
-            "searchAnalyzer": null,
-            "analyzer": null,
-            "synonymMaps": []
+            "facetable": false
         },
         {
             "name": "source_document_id",
@@ -94,12 +66,7 @@
             "filterable": false,
             "retrievable": true,
             "sortable": false,
-            "facetable": false,
-            "key": false,
-            "indexAnalyzer": null,
-            "searchAnalyzer": null,
-            "analyzer": null,
-            "synonymMaps": []
+            "facetable": false
         },
         {
             "name": "source_document_content_field",
@@ -108,12 +75,7 @@
             "filterable": true,
             "retrievable": true,
             "sortable": false,
-            "facetable": false,
-            "key": false,
-            "indexAnalyzer": null,
-            "searchAnalyzer": null,
-            "analyzer": null,
-            "synonymMaps": []
+            "facetable": false
         },
         {
             "name": "source_document_title",
@@ -123,11 +85,7 @@
             "retrievable": true,
             "sortable": true,
             "facetable": false,
-            "key": false,
-            "indexAnalyzer": null,
-            "searchAnalyzer": null,
-            "analyzer": "en.microsoft",
-            "synonymMaps": []
+            "analyzer": "en.microsoft"
         },
         {
             "name": "source_document_filepath",
@@ -137,11 +95,7 @@
             "retrievable": true,
             "sortable": false,
             "facetable": false,
-            "key": false,
-            "indexAnalyzer": null,
-            "searchAnalyzer": null,
-            "analyzer": "standard.lucene",
-            "synonymMaps": []
+            "analyzer": "standard.lucene"
         }
     ],
     "vectorSearch": {

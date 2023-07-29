@@ -3,14 +3,13 @@
 # skill to chunk it into smaller pieces, after which an embedding (vector) is generated for each chunk,
 # the chunks with their embeddings are stored in another storage container (as a knowledge store) and
 # then indexed by the search service so that they can be searched with vector and hybrid search.
-
+# The Web API skill is implemented as an Azure Function and the Python code can be found here:
 # https://github.com/Azure-Samples/azure-search-power-skills/tree/main/Vector/EmbeddingGenerator
-# https://github.com/Azure/cognitive-search-vector-pr/blob/main/demo-python/code/azure-search-vector-ingestion-python-sample.ipynb
 
 # Main variables
 REGION=westeurope
 RGNAME=jdcognitivesearch
-SKILLURICHUNKEMBED=...
+SKILLURICHUNKEMBED=https://my-function-app.azurewebsites.net/api/chunk-embed?code=my-function-code
 
 # Derived variables
 STORAGEACCOUNTNAME=$RGNAME"strg"

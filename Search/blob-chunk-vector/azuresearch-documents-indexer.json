@@ -13,8 +13,7 @@
             "sourceFieldName": "metadata_storage_path",
             "targetFieldName": "id",
             "mappingFunction": {
-                "name": "base64Encode",
-                "parameters": null
+                "name": "base64Encode"
             }
         }
     ],

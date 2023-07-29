@@ -1,0 +1,22 @@
+{
+    "name": "__indexerName__",
+    "dataSourceName": "__datasourceName__",
+    "skillsetName": "__skillsetName__",
+    "targetIndexName": "__indexName__",
+    "parameters": {
+        "configuration": {
+            "parsingMode": "default"
+        }
+    },
+    "fieldMappings": [
+        {
+            "sourceFieldName": "metadata_storage_path",
+            "targetFieldName": "id",
+            "mappingFunction": {
+                "name": "base64Encode",
+                "parameters": null
+            }
+        }
+    ],
+    "outputFieldMappings": []
+}

@@ -1,0 +1,105 @@
+# This sample creates an Azure Cognitive Search service and a Storage account with a number of sample
+# files uploaded to Blob storage. Each file is indexed as usual but also processed by a custom Web API
+# skill to chunk it into smaller pieces, after which an embedding (vector) is generated for each chunk,
+# the chunks with their embeddings are stored in another storage container (as a knowledge store) and
+# then indexed by the search service so that they can be searched with vector and hybrid search.
+
+# https://github.com/Azure-Samples/azure-search-power-skills/tree/main/Vector/EmbeddingGenerator
+# https://github.com/Azure/cognitive-search-vector-pr/blob/main/demo-python/code/azure-search-vector-ingestion-python-sample.ipynb
+
+# Main variables
+REGION=westeurope
+RGNAME=jdcognitivesearch
+SKILLURICHUNKEMBED=...
+
+# Derived variables
+STORAGEACCOUNTNAME=$RGNAME"strg"
+COGNITIVESEARCHNAME=$RGNAME"cognitivesearch"
+COGNITIVESEARCHSKU=basic
+STORAGEACCOUNTCONTAINERNAMEPREFIX=sample
+STORAGEACCOUNTCONTAINERNAMEDOCUMENTS=$STORAGEACCOUNTCONTAINERNAMEPREFIX-documents
+STORAGEACCOUNTCONTAINERNAMECHUNKS=$STORAGEACCOUNTCONTAINERNAMEPREFIX-chunks
+DATASOURCENAMEDOCUMENTS=$STORAGEACCOUNTCONTAINERNAMEDOCUMENTS-datasource
+SKILLSETNAMEDOCUMENTS=$STORAGEACCOUNTCONTAINERNAMEDOCUMENTS-skillset
+INDEXNAMEDOCUMENTS=$STORAGEACCOUNTCONTAINERNAMEDOCUMENTS-index
+INDEXERNAMEDOCUMENTS=$STORAGEACCOUNTCONTAINERNAMEDOCUMENTS-indexer
+DATASOURCENAMECHUNKS=$STORAGEACCOUNTCONTAINERNAMECHUNKS-datasource
+INDEXNAMECHUNKS=$STORAGEACCOUNTCONTAINERNAMECHUNKS-index
+INDEXERNAMECHUNKS=$STORAGEACCOUNTCONTAINERNAMECHUNKS-indexer
+SEARCHAPIVERSION=2023-07-01-Preview
+
+# Create Resource Group and supporting services
+az group create -l $REGION -n $RGNAME
+az storage account create -l $REGION -g $RGNAME -n $STORAGEACCOUNTNAME --kind StorageV2 --sku Standard_LRS --allow-blob-public-access false
+STORAGEACCOUNTCONNECTIONSTRING=$(az storage account show-connection-string -g $RGNAME -n $STORAGEACCOUNTNAME --query connectionString --output tsv)
+az storage container create --connection-string $STORAGEACCOUNTCONNECTIONSTRING --name $STORAGEACCOUNTCONTAINERNAMEDOCUMENTS --public-access off
+az storage container create --connection-string $STORAGEACCOUNTCONNECTIONSTRING --name $STORAGEACCOUNTCONTAINERNAMECHUNKS --public-access off
+
+# Upload sample data to blob storage container
+az storage blob upload-batch --connection-string $STORAGEACCOUNTCONNECTIONSTRING -d $STORAGEACCOUNTCONTAINERNAMEDOCUMENTS -s "../samplefiles"
+
+# Create Azure Cognitive Search
+az search service create -l $REGION -g $RGNAME -n $COGNITIVESEARCHNAME \
+    --sku $COGNITIVESEARCHSKU --partition-count 1 --replica-count 1
+COGNITIVESEARCHADMINKEY=$(az search admin-key show -g $RGNAME --service-name $COGNITIVESEARCHNAME --query primaryKey --output tsv)
+
+# Once the search service is created, enable semantic search (free tier).
+az rest --method PUT --uri https://management.azure.com/subscriptions/{subscriptionId}/resourceGroups/$RGNAME/providers/Microsoft.Search/searchServices/$COGNITIVESEARCHNAME?api-version=2021-04-01-preview --body "{ \"location\": \"$REGION\", \"sku\": { \"name\": \"$COGNITIVESEARCHSKU\" }, \"properties\": { \"semanticSearch\": \"free\" } }"
+
+# Create data source for blob document container
+cat "azuresearch-documents-datasource.json" | \
+    awk '{sub(/__datasourceName__/,"'$DATASOURCENAMEDOCUMENTS'")}1' | awk '{sub(/__connectionString__/,"'$STORAGEACCOUNTCONNECTIONSTRING'")}1' | awk '{sub(/__containerName__/,"'$STORAGEACCOUNTCONTAINERNAMEDOCUMENTS'")}1' | \
+    curl -X PUT "https://$COGNITIVESEARCHNAME.search.windows.net/datasources/$DATASOURCENAMEDOCUMENTS?api-version=$SEARCHAPIVERSION" \
+    -H "Content-Type: application/json" -H "api-key: $COGNITIVESEARCHADMINKEY" \
+    -d @-
+
+# Create skillset for blob document indexer
+cat "azuresearch-documents-skillset.json" | \
+    awk '{sub(/__skillsetName__/,"'$SKILLSETNAMEDOCUMENTS'")}1' | awk '{sub(/__skillUriChunkEmbed__/,"'$SKILLURICHUNKEMBED'")}1' | awk '{sub(/__connectionString__/,"'$STORAGEACCOUNTCONNECTIONSTRING'")}1' | awk '{sub(/__containerNameChunks__/,"'$STORAGEACCOUNTCONTAINERNAMECHUNKS'")}1' | \
+    curl -X PUT "https://$COGNITIVESEARCHNAME.search.windows.net/skillsets/$SKILLSETNAMEDOCUMENTS?api-version=$SEARCHAPIVERSION" \
+    -H "Content-Type: application/json" -H "api-key: $COGNITIVESEARCHADMINKEY" \
+    -d @-
+
+# Create index for blob document files
+cat "azuresearch-documents-index.json" | \
+    awk '{sub(/__indexName__/,"'$INDEXNAMEDOCUMENTS'")}1' | \
+    curl -X PUT "https://$COGNITIVESEARCHNAME.search.windows.net/indexes/$INDEXNAMEDOCUMENTS?api-version=$SEARCHAPIVERSION" \
+    -H "Content-Type: application/json" -H "api-key: $COGNITIVESEARCHADMINKEY" \
+    -d @-
+
+# Create indexer for blob document container
+cat "azuresearch-documents-indexer.json" | \
+    awk '{sub(/__indexerName__/,"'$INDEXERNAMEDOCUMENTS'")}1' | awk '{sub(/__datasourceName__/,"'$DATASOURCENAMEDOCUMENTS'")}1' | awk '{sub(/__skillsetName__/,"'$SKILLSETNAMEDOCUMENTS'")}1' | awk '{sub(/__indexName__/,"'$INDEXNAMEDOCUMENTS'")}1' | \
+    curl -X PUT "https://$COGNITIVESEARCHNAME.search.windows.net/indexers/$INDEXERNAMEDOCUMENTS?api-version=$SEARCHAPIVERSION" \
+    -H "Content-Type: application/json" -H "api-key: $COGNITIVESEARCHADMINKEY" \
+    -d @-
+
+# Create data source for blob chunk container
+cat "azuresearch-chunks-datasource.json" | \
+    awk '{sub(/__datasourceName__/,"'$DATASOURCENAMECHUNKS'")}1' | awk '{sub(/__connectionString__/,"'$STORAGEACCOUNTCONNECTIONSTRING'")}1' | awk '{sub(/__containerName__/,"'$STORAGEACCOUNTCONTAINERNAMECHUNKS'")}1' | \
+    curl -X PUT "https://$COGNITIVESEARCHNAME.search.windows.net/datasources/$DATASOURCENAMECHUNKS?api-version=$SEARCHAPIVERSION" \
+    -H "Content-Type: application/json" -H "api-key: $COGNITIVESEARCHADMINKEY" \
+    -d @-
+
+# Create index for blob chunk files
+cat "azuresearch-chunks-index.json" | \
+    awk '{sub(/__indexName__/,"'$INDEXNAMECHUNKS'")}1' | \
+    curl -X PUT "https://$COGNITIVESEARCHNAME.search.windows.net/indexes/$INDEXNAMECHUNKS?api-version=$SEARCHAPIVERSION" \
+    -H "Content-Type: application/json" -H "api-key: $COGNITIVESEARCHADMINKEY" \
+    -d @-
+
+# Create indexer for blob chunk container
+cat "azuresearch-chunks-indexer.json" | \
+    awk '{sub(/__indexerName__/,"'$INDEXERNAMECHUNKS'")}1' | awk '{sub(/__datasourceName__/,"'$DATASOURCENAMECHUNKS'")}1' | awk '{sub(/__indexName__/,"'$INDEXNAMECHUNKS'")}1' | \
+    curl -X PUT "https://$COGNITIVESEARCHNAME.search.windows.net/indexers/$INDEXERNAMECHUNKS?api-version=$SEARCHAPIVERSION" \
+    -H "Content-Type: application/json" -H "api-key: $COGNITIVESEARCHADMINKEY" \
+    -d @-
+
+# Cleanup.
+curl -X DELETE "https://$COGNITIVESEARCHNAME.search.windows.net/indexers/$INDEXERNAMECHUNKS?api-version=$SEARCHAPIVERSION" -H "api-key: $COGNITIVESEARCHADMINKEY"
+curl -X DELETE "https://$COGNITIVESEARCHNAME.search.windows.net/indexes/$INDEXNAMECHUNKS?api-version=$SEARCHAPIVERSION" -H "api-key: $COGNITIVESEARCHADMINKEY"
+curl -X DELETE "https://$COGNITIVESEARCHNAME.search.windows.net/datasources/$DATASOURCENAMECHUNKS?api-version=$SEARCHAPIVERSION" -H "api-key: $COGNITIVESEARCHADMINKEY"
+curl -X DELETE "https://$COGNITIVESEARCHNAME.search.windows.net/indexers/$INDEXERNAMEDOCUMENTS?api-version=$SEARCHAPIVERSION" -H "api-key: $COGNITIVESEARCHADMINKEY"
+curl -X DELETE "https://$COGNITIVESEARCHNAME.search.windows.net/indexes/$INDEXNAMEDOCUMENTS?api-version=$SEARCHAPIVERSION" -H "api-key: $COGNITIVESEARCHADMINKEY"
+curl -X DELETE "https://$COGNITIVESEARCHNAME.search.windows.net/skillsets/$SKILLSETNAMEDOCUMENTS?api-version=$SEARCHAPIVERSION" -H "api-key: $COGNITIVESEARCHADMINKEY"
+curl -X DELETE "https://$COGNITIVESEARCHNAME.search.windows.net/datasources/$DATASOURCENAMEDOCUMENTS?api-version=$SEARCHAPIVERSION" -H "api-key: $COGNITIVESEARCHADMINKEY"

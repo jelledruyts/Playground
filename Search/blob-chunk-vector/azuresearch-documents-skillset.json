@@ -1,0 +1,96 @@
+{
+    "name": "__skillsetName__",
+    "description": "Skillset for chunking and embedding",
+    "skills": [
+        {
+            "@odata.type": "#Microsoft.Skills.Custom.WebApiSkill",
+            "name": "chunking-embedding-skill",
+            "description": "Chunking and embedding skill",
+            "context": "/document/content",
+            "uri": "__skillUriChunkEmbed__",
+            "httpMethod": "POST",
+            "httpHeaders": {},
+            "timeout": "PT3M",
+            "batchSize": 1,
+            "degreeOfParallelism": 1,
+            "inputs": [
+                {
+                    "name": "document_id",
+                    "source": "/document/id"
+                },
+                {
+                    "name": "text",
+                    "source": "/document/content"
+                },
+                {
+                    "name": "filepath",
+                    "source": "/document/metadata_storage_path"
+                },
+                {
+                    "name": "fieldname",
+                    "source": "='content'"
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "chunks",
+                    "targetName": "chunks"
+                }
+            ]
+        }
+    ],
+    "knowledgeStore": {
+        "storageConnectionString": "__connectionString__",
+        "projections": [
+            {
+                "tables": [],
+                "objects": [
+                    {
+                        "storageContainer": "__containerNameChunks__",
+                        "generatedKeyName": "id",
+                        "sourceContext": "/document/content/chunks/*",
+                        "inputs": [
+                            {
+                                "name": "source_document_id",
+                                "source": "/document/id"
+                            },
+                            {
+                                "name": "source_document_filepath",
+                                "source": "/document/metadata_storage_path"
+                            },
+                            {
+                                "name": "source_field_name",
+                                "source": "/document/content/chunks/*/embedding_metadata/fieldname"
+                            },
+                            {
+                                "name": "title",
+                                "source": "/document/metadata_storage_name"
+                            },
+                            {
+                                "name": "content",
+                                "source": "/document/content/chunks/*/content"
+                            },
+                            {
+                                "name": "content_vector",
+                                "source": "/document/content/chunks/*/embedding_metadata/embedding"
+                            },
+                            {
+                                "name": "chunk_index",
+                                "source": "/document/content/chunks/*/embedding_metadata/index"
+                            },
+                            {
+                                "name": "chunk_offset",
+                                "source": "/document/content/chunks/*/embedding_metadata/offset"
+                            },
+                            {
+                                "name": "chunk_length",
+                                "source": "/document/content/chunks/*/embedding_metadata/length"
+                            }
+                        ]
+                    }
+                ],
+                "files": []
+            }
+        ]
+    }
+}

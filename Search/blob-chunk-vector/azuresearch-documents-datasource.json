@@ -1,0 +1,15 @@
+{
+    "name": "__datasourceName__",
+    "description": null,
+    "type": "azureblob",
+    "subtype": null,
+    "credentials": {
+        "connectionString": "__connectionString__"
+    },
+    "container": {
+        "name": "__containerName__",
+        "query": null
+    },
+    "dataChangeDetectionPolicy": null,
+    "dataDeletionDetectionPolicy": null
+}

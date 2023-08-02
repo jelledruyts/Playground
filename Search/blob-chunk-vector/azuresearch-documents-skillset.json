@@ -59,11 +59,11 @@
                                 "source": "/document/metadata_storage_path"
                             },
                             {
-                                "name": "source_field_name",
+                                "name": "source_document_content_field",
                                 "source": "/document/content/chunks/*/embedding_metadata/fieldname"
                             },
                             {
-                                "name": "title",
+                                "name": "source_document_title",
                                 "source": "/document/metadata_storage_name"
                             },
                             {

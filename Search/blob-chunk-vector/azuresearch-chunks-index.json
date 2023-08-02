@@ -63,9 +63,9 @@
             "name": "source_document_id",
             "type": "Edm.String",
             "searchable": false,
-            "filterable": false,
+            "filterable": true,
             "retrievable": true,
-            "sortable": false,
+            "sortable": true,
             "facetable": false
         },
         {
@@ -74,14 +74,14 @@
             "searchable": false,
             "filterable": true,
             "retrievable": true,
-            "sortable": false,
+            "sortable": true,
             "facetable": false
         },
         {
             "name": "source_document_title",
             "type": "Edm.String",
             "searchable": true,
-            "filterable": false,
+            "filterable": true,
             "retrievable": true,
             "sortable": true,
             "facetable": false,
@@ -91,9 +91,9 @@
             "name": "source_document_filepath",
             "type": "Edm.String",
             "searchable": true,
-            "filterable": false,
+            "filterable": true,
             "retrievable": true,
-            "sortable": false,
+            "sortable": true,
             "facetable": false,
             "analyzer": "standard.lucene"
         }

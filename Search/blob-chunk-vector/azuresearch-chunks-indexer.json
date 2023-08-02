@@ -6,16 +6,5 @@
         "configuration": {
             "parsingMode": "json"
         }
-    },
-    "fieldMappings": [
-        {
-            "sourceFieldName": "source_field_name",
-            "targetFieldName": "source_document_content_field"
-        },
-        {
-            "sourceFieldName": "title",
-            "targetFieldName": "source_document_title"
-        }
-    ],
-    "outputFieldMappings": []
+    }
 }

@@ -1,0 +1,92 @@
+# This sample creates an Azure AI Search service and a Storage account with a number of sample
+# files uploaded to Blob storage. Each file is indexed as usual into a main documents index, but at
+# the same time, integrated chunking and vectorization also populates a separate chunks index.
+# The same embedding model used during the indexing pipeline is also used at query time for integrated
+# vector (or hybrid) search, without the client having to vectorize the query or know about the
+# embeddings model.
+# See https://learn.microsoft.com/azure/search/vector-search-how-to-configure-vectorizer
+
+# Main variables
+REGION=westeurope
+RGNAME=jdsearch
+
+# Derived variables
+STORAGEACCOUNTNAME=$RGNAME"strg"
+OPENAINAME=$RGNAME"openai"
+OPENAIEMBEDDINGMODELNAME=text-embedding-ada-002
+OPENAIEMBEDDINGMODELVERSION=2
+SEARCHNAME=$RGNAME"search"
+SEARCHSKU=basic
+STORAGEACCOUNTCONTAINERNAMEPREFIX=sample
+STORAGEACCOUNTCONTAINERNAMEDOCUMENTS=$STORAGEACCOUNTCONTAINERNAMEPREFIX-documents
+DATASOURCENAMEDOCUMENTS=$STORAGEACCOUNTCONTAINERNAMEDOCUMENTS-datasource
+SKILLSETNAMEDOCUMENTS=$STORAGEACCOUNTCONTAINERNAMEDOCUMENTS-skillset
+INDEXNAMEDOCUMENTS=$STORAGEACCOUNTCONTAINERNAMEDOCUMENTS-index
+INDEXERNAMEDOCUMENTS=$STORAGEACCOUNTCONTAINERNAMEDOCUMENTS-indexer
+INDEXNAMECHUNKS=$STORAGEACCOUNTCONTAINERNAMEPREFIX-chunks-index
+SEARCHAPIVERSION=2023-10-01-Preview
+
+# Create Resource Group and supporting services
+az group create -l $REGION -n $RGNAME
+az storage account create -l $REGION -g $RGNAME -n $STORAGEACCOUNTNAME --kind StorageV2 --sku Standard_LRS --allow-blob-public-access false
+STORAGEACCOUNTCONNECTIONSTRING=$(az storage account show-connection-string -g $RGNAME -n $STORAGEACCOUNTNAME --query connectionString --output tsv)
+az storage container create --connection-string $STORAGEACCOUNTCONNECTIONSTRING --name $STORAGEACCOUNTCONTAINERNAMEDOCUMENTS --public-access off
+
+# Upload sample data to blob storage container
+az storage blob upload-batch --connection-string $STORAGEACCOUNTCONNECTIONSTRING -d $STORAGEACCOUNTCONTAINERNAMEDOCUMENTS -s "../samplefiles"
+
+# Create Azure OpenAI service and embedding model deployment
+az cognitiveservices account create --name $OPENAINAME --resource-group $RGNAME --location $REGION --kind OpenAI --sku s0
+OPENAIENDPOINT=$(az cognitiveservices account show --name $OPENAINAME --resource-group $RGNAME --query properties.endpoint --output tsv)
+OPENAIKEY=$(az cognitiveservices account keys list --name $OPENAINAME --resource-group $RGNAME --query key1 --output tsv)
+az cognitiveservices account deployment create --name $OPENAINAME --resource-group $RGNAME --deployment-name $OPENAIEMBEDDINGMODELNAME --model-name $OPENAIEMBEDDINGMODELNAME --model-version $OPENAIEMBEDDINGMODELVERSION --model-format OpenAI --sku-capacity 50 --sku-name "Standard"
+
+# Create Azure AI Search
+az search service create -l $REGION -g $RGNAME -n $SEARCHNAME --sku $SEARCHSKU --partition-count 1 --replica-count 1
+SEARCHADMINKEY=$(az search admin-key show -g $RGNAME --service-name $SEARCHNAME --query primaryKey --output tsv)
+
+# Once the search service is created, enable semantic search (free tier)
+az rest --method PUT --uri https://management.azure.com/subscriptions/{subscriptionId}/resourceGroups/$RGNAME/providers/Microsoft.Search/searchServices/$SEARCHNAME?api-version=2021-04-01-preview --body "{ \"location\": \"$REGION\", \"sku\": { \"name\": \"$SEARCHSKU\" }, \"properties\": { \"semanticSearch\": \"free\" } }"
+
+# Create data source for blob document container
+cat "azuresearch-documents-datasource.json" | \
+    awk '{sub(/__datasourceName__/,"'$DATASOURCENAMEDOCUMENTS'")}1' | awk '{sub(/__connectionString__/,"'$STORAGEACCOUNTCONNECTIONSTRING'")}1' | awk '{sub(/__containerName__/,"'$STORAGEACCOUNTCONTAINERNAMEDOCUMENTS'")}1' | \
+    curl -X PUT "https://$SEARCHNAME.search.windows.net/datasources/$DATASOURCENAMEDOCUMENTS?api-version=$SEARCHAPIVERSION" \
+    -H "Content-Type: application/json" -H "api-key: $SEARCHADMINKEY" \
+    -d @-
+
+# Create index for blob document files
+cat "azuresearch-documents-index.json" | \
+    awk '{sub(/__indexName__/,"'$INDEXNAMEDOCUMENTS'")}1' | \
+    curl -X PUT "https://$SEARCHNAME.search.windows.net/indexes/$INDEXNAMEDOCUMENTS?api-version=$SEARCHAPIVERSION" \
+    -H "Content-Type: application/json" -H "api-key: $SEARCHADMINKEY" \
+    -d @-
+
+# Create index for blob chunk files
+
+cat "azuresearch-chunks-index.json" | \
+    awk '{sub(/__indexName__/,"'$INDEXNAMECHUNKS'")}1' | awk '{sub(/__openAIEndpoint__/,"'$OPENAIENDPOINT'")}1' | awk '{sub(/__openAIDeployment__/,"'$OPENAIEMBEDDINGMODELNAME'")}1' | awk '{sub(/__openAIKey__/,"'$OPENAIKEY'")}1' | \
+    curl -X PUT "https://$SEARCHNAME.search.windows.net/indexes/$INDEXNAMECHUNKS?api-version=$SEARCHAPIVERSION" \
+    -H "Content-Type: application/json" -H "api-key: $SEARCHADMINKEY" \
+    -d @-
+
+# Create skillset for blob document indexer
+cat "azuresearch-documents-skillset.json" | \
+    awk '{sub(/__skillsetName__/,"'$SKILLSETNAMEDOCUMENTS'")}1' | awk '{sub(/__openAIEndpoint__/,"'$OPENAIENDPOINT'")}1' | awk '{sub(/__openAIDeployment__/,"'$OPENAIEMBEDDINGMODELNAME'")}1' | awk '{sub(/__openAIKey__/,"'$OPENAIKEY'")}1' | awk '{sub(/__indexNameChunks__/,"'$INDEXNAMECHUNKS'")}1' | \
+    curl -X PUT "https://$SEARCHNAME.search.windows.net/skillsets/$SKILLSETNAMEDOCUMENTS?api-version=$SEARCHAPIVERSION" \
+    -H "Content-Type: application/json" -H "api-key: $SEARCHADMINKEY" \
+    -d @-
+
+# Create indexer for blob document container
+cat "azuresearch-documents-indexer.json" | \
+    awk '{sub(/__indexerName__/,"'$INDEXERNAMEDOCUMENTS'")}1' | awk '{sub(/__datasourceName__/,"'$DATASOURCENAMEDOCUMENTS'")}1' | awk '{sub(/__skillsetName__/,"'$SKILLSETNAMEDOCUMENTS'")}1' | awk '{sub(/__indexName__/,"'$INDEXNAMEDOCUMENTS'")}1' | \
+    curl -X PUT "https://$SEARCHNAME.search.windows.net/indexers/$INDEXERNAMEDOCUMENTS?api-version=$SEARCHAPIVERSION" \
+    -H "Content-Type: application/json" -H "api-key: $SEARCHADMINKEY" \
+    -d @-
+
+# Cleanup.
+curl -X DELETE "https://$SEARCHNAME.search.windows.net/indexers/$INDEXERNAMEDOCUMENTS?api-version=$SEARCHAPIVERSION" -H "api-key: $SEARCHADMINKEY"
+curl -X DELETE "https://$SEARCHNAME.search.windows.net/indexes/$INDEXNAMECHUNKS?api-version=$SEARCHAPIVERSION" -H "api-key: $SEARCHADMINKEY"
+curl -X DELETE "https://$SEARCHNAME.search.windows.net/indexes/$INDEXNAMEDOCUMENTS?api-version=$SEARCHAPIVERSION" -H "api-key: $SEARCHADMINKEY"
+curl -X DELETE "https://$SEARCHNAME.search.windows.net/skillsets/$SKILLSETNAMEDOCUMENTS?api-version=$SEARCHAPIVERSION" -H "api-key: $SEARCHADMINKEY"
+curl -X DELETE "https://$SEARCHNAME.search.windows.net/datasources/$DATASOURCENAMEDOCUMENTS?api-version=$SEARCHAPIVERSION" -H "api-key: $SEARCHADMINKEY"

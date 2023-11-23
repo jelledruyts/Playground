@@ -1,0 +1,76 @@
+{
+    "name": "__skillsetName__",
+    "description": "Skillset to chunk documents and generate embeddings",
+    "skills": [
+        {
+            "@odata.type": "#Microsoft.Skills.Text.SplitSkill",
+            "textSplitMode": "pages",
+            "maximumPageLength": 2000,
+            "pageOverlapLength": 500,
+            "maximumPagesToTake": 0,
+            "defaultLanguageCode": "en",
+            "context": "/document",
+            "inputs": [
+                {
+                    "name": "text",
+                    "source": "/document/content"
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "textItems",
+                    "targetName": "chunks"
+                }
+            ]
+        },
+        {
+            "@odata.type": "#Microsoft.Skills.Text.AzureOpenAIEmbeddingSkill",
+            "resourceUri": "__openAIEndpoint__",
+            "deploymentId": "__openAIDeployment__",
+            "apiKey": "__openAIKey__",
+            "context": "/document/chunks/*",
+            "inputs": [
+                {
+                    "name": "text",
+                    "source": "/document/chunks/*"
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "embedding",
+                    "targetName": "content_vector"
+                }
+            ]
+        }
+    ],
+    "indexProjections": {
+        "selectors": [
+            {
+                "targetIndexName": "__indexNameChunks__",
+                "parentKeyFieldName": "source_document_id",
+                "sourceContext": "/document/chunks/*",
+                "mappings": [
+                    {
+                        "name": "content",
+                        "source": "/document/chunks/*"
+                    },
+                    {
+                        "name": "content_vector",
+                        "source": "/document/chunks/*/content_vector"
+                    },
+                    {
+                        "name": "source_document_title",
+                        "source": "/document/metadata_storage_name"
+                    },
+                    {
+                        "name": "source_document_filepath",
+                        "source": "/document/metadata_storage_path"
+                    }
+                ]
+            }
+        ],
+        "parameters": {
+            "projectionMode": "includeIndexingParentDocuments"
+        }
+    }
+}

@@ -1,0 +1,121 @@
+{
+    "name": "__indexName__",
+    "fields": [
+        {
+            "name": "id",
+            "type": "Edm.String",
+            "searchable": true,
+            "filterable": true,
+            "retrievable": true,
+            "sortable": true,
+            "facetable": false,
+            "key": true,
+            "analyzer": "keyword"
+        },
+        {
+            "name": "content",
+            "type": "Edm.String",
+            "searchable": true,
+            "filterable": false,
+            "retrievable": true,
+            "sortable": false,
+            "facetable": false,
+            "analyzer": "en.microsoft"
+        },
+        {
+            "name": "content_vector",
+            "type": "Collection(Edm.Single)",
+            "dimensions": 1536,
+            "vectorSearchProfile": "default-profile",
+            "searchable": true,
+            "filterable": false,
+            "retrievable": true,
+            "sortable": false,
+            "facetable": false
+        },
+        {
+            "name": "source_document_id",
+            "type": "Edm.String",
+            "searchable": false,
+            "filterable": true,
+            "retrievable": true,
+            "sortable": true,
+            "facetable": false
+        },
+        {
+            "name": "source_document_title",
+            "type": "Edm.String",
+            "searchable": true,
+            "filterable": true,
+            "retrievable": true,
+            "sortable": true,
+            "facetable": false,
+            "analyzer": "en.microsoft"
+        },
+        {
+            "name": "source_document_filepath",
+            "type": "Edm.String",
+            "searchable": true,
+            "filterable": true,
+            "retrievable": true,
+            "sortable": true,
+            "facetable": false,
+            "analyzer": "standard.lucene"
+        }
+    ],
+    "vectorSearch": {
+        "profiles": [
+            {
+                "name": "default-profile",
+                "algorithm": "default-algorithm",
+                "vectorizer": "default-vectorizer"
+            }
+        ],
+        "algorithms": [
+            {
+                "name": "default-algorithm",
+                "kind": "hnsw",
+                "hnswParameters": {
+                    "m": 4,
+                    "efConstruction": 400,
+                    "efSearch": 500,
+                    "metric": "cosine"
+                }
+            }
+        ],
+        "vectorizers": [
+            {
+                "name": "default-vectorizer",
+                "kind": "azureOpenAI",
+                "azureOpenAIParameters": {
+                    "resourceUri": "__openAIEndpoint__",
+                    "deploymentId": "__openAIDeployment__",
+                    "apiKey": "__openAIKey__"
+                }
+            }
+        ]
+    },
+    "semantic": {
+        "configurations": [
+            {
+                "name": "default",
+                "prioritizedFields": {
+                    "titleField": {
+                        "fieldName": "source_document_title"
+                    },
+                    "prioritizedContentFields": [
+                        {
+                            "fieldName": "content"
+                        }
+                    ],
+                    "prioritizedKeywordsFields": []
+                }
+            }
+        ]
+    },
+    "corsOptions": {
+        "allowedOrigins": [
+            "*"
+        ]
+    }
+}

@@ -1,0 +1,113 @@
+{
+    "name": "__indexName__",
+    "fields": [
+        {
+            "name": "id",
+            "type": "Edm.String",
+            "searchable": false,
+            "filterable": false,
+            "retrievable": true,
+            "sortable": false,
+            "facetable": false,
+            "key": true
+        },
+        {
+            "name": "content",
+            "type": "Edm.String",
+            "searchable": true,
+            "filterable": false,
+            "retrievable": true,
+            "sortable": false,
+            "facetable": false,
+            "analyzer": "en.microsoft"
+        },
+        {
+            "name": "metadata_storage_content_type",
+            "type": "Edm.String",
+            "searchable": false,
+            "filterable": true,
+            "retrievable": true,
+            "sortable": true,
+            "facetable": true
+        },
+        {
+            "name": "metadata_storage_size",
+            "type": "Edm.Int64",
+            "searchable": false,
+            "filterable": true,
+            "retrievable": true,
+            "sortable": true,
+            "facetable": true
+        },
+        {
+            "name": "metadata_storage_last_modified",
+            "type": "Edm.DateTimeOffset",
+            "searchable": false,
+            "filterable": true,
+            "retrievable": true,
+            "sortable": true,
+            "facetable": true
+        },
+        {
+            "name": "metadata_storage_content_md5",
+            "type": "Edm.String",
+            "searchable": false,
+            "filterable": false,
+            "retrievable": true,
+            "sortable": false,
+            "facetable": false
+        },
+        {
+            "name": "metadata_storage_name",
+            "type": "Edm.String",
+            "searchable": true,
+            "filterable": true,
+            "retrievable": true,
+            "sortable": true,
+            "facetable": true,
+            "analyzer": "standard.lucene"
+        },
+        {
+            "name": "metadata_storage_path",
+            "type": "Edm.String",
+            "searchable": true,
+            "filterable": true,
+            "retrievable": true,
+            "sortable": true,
+            "facetable": false,
+            "analyzer": "standard.lucene"
+        },
+        {
+            "name": "metadata_content_type",
+            "type": "Edm.String",
+            "searchable": false,
+            "filterable": true,
+            "retrievable": true,
+            "sortable": true,
+            "facetable": true
+        }
+    ],
+    "semantic": {
+        "configurations": [
+            {
+                "name": "default",
+                "prioritizedFields": {
+                    "titleField": {
+                        "fieldName": "metadata_storage_name"
+                    },
+                    "prioritizedContentFields": [
+                        {
+                            "fieldName": "content"
+                        }
+                    ],
+                    "prioritizedKeywordsFields": []
+                }
+            }
+        ]
+    },
+    "corsOptions": {
+        "allowedOrigins": [
+            "*"
+        ]
+    }
+}

@@ -36,7 +36,7 @@ az storage container create --connection-string $STORAGEACCOUNTCONNECTIONSTRING 
 az storage blob upload-batch --connection-string $STORAGEACCOUNTCONNECTIONSTRING -d $STORAGEACCOUNTCONTAINERNAMEDOCUMENTS -s "../samplefiles"
 
 # Create Azure OpenAI service and embedding model deployment
-az cognitiveservices account create --name $OPENAINAME --resource-group $RGNAME --location $REGION --kind OpenAI --sku s0
+az cognitiveservices account create --name $OPENAINAME --resource-group $RGNAME --location $REGION --custom-domain $OPENAINAME --kind OpenAI --sku s0
 OPENAIENDPOINT=$(az cognitiveservices account show --name $OPENAINAME --resource-group $RGNAME --query properties.endpoint --output tsv)
 OPENAIKEY=$(az cognitiveservices account keys list --name $OPENAINAME --resource-group $RGNAME --query key1 --output tsv)
 az cognitiveservices account deployment create --name $OPENAINAME --resource-group $RGNAME --deployment-name $OPENAIEMBEDDINGMODELNAME --model-name $OPENAIEMBEDDINGMODELNAME --model-version $OPENAIEMBEDDINGMODELVERSION --model-format OpenAI --sku-capacity 50 --sku-name "Standard"
@@ -63,7 +63,6 @@ cat "azuresearch-documents-index.json" | \
     -d @-
 
 # Create index for blob chunk files
-
 cat "azuresearch-chunks-index.json" | \
     awk '{sub(/__indexName__/,"'$INDEXNAMECHUNKS'")}1' | awk '{sub(/__openAIEndpoint__/,"'$OPENAIENDPOINT'")}1' | awk '{sub(/__openAIDeployment__/,"'$OPENAIEMBEDDINGMODELNAME'")}1' | awk '{sub(/__openAIKey__/,"'$OPENAIKEY'")}1' | \
     curl -X PUT "https://$SEARCHNAME.search.windows.net/indexes/$INDEXNAMECHUNKS?api-version=$SEARCHAPIVERSION" \
